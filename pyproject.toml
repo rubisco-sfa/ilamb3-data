@@ -1,0 +1,12 @@
+[project]
+name = "ilamb3-data"
+version = "0.1.0"
+description = "Add your description here"
+readme = "README.md"
+requires-python = ">=3.13"
+dependencies = [
+    "netcdf4>=1.7.2",
+    "pooch>=1.8.2",
+    "pydantic>=2.10.6",
+    "xarray>=2025.1.2",
+]

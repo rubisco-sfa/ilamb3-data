@@ -1,1 +1,3 @@
-gpp/WECANN/gpp.nc sha1:6e864a6ae201195cdf995a3a81720188af441e13
+WECANN/gpp.nc sha1:bbf303421e5d77445bf69770f4531ac6f77cccc9
+WECANN/hfls.nc sha1:c162fa4c5f7e924d846377134efdfaaccb82227e
+WECANN/hfss.nc sha1:c6e3405bf901aaa27112e0249da7369dbb04bb25

@@ -4,11 +4,17 @@ jobs:
   find_changed_lines:
     runs-on: ubuntu-latest
     steps:
+
       - uses: actions/checkout@v4
       - name: Find changed lines
         id: changed_lines
         uses: hestonhoffman/changed-lines@v1
-      - name: Print changed lines
-        run: echo ${{ steps.changed_lines.outputs.changed_lines }}
+
+      - name: Install uv environment
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install ilamb3 and dependencies
+        run: uv sync
+
       - name: Operate on changed lines
-        run: python scripts/validate_patch.py $GITHUB_OUTPUT
+        run: uv run python scripts/validate_patch.py $GITHUB_OUTPUT

@@ -10,6 +10,9 @@ jobs:
         id: changed_lines
         uses: hestonhoffman/changed-lines@v1
 
+      - name: Print changed lines
+        run: echo ${{ steps.changed_lines.outputs.changed_lines }}
+
       - name: Install uv environment
         uses: astral-sh/setup-uv@v4
 

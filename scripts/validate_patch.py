@@ -10,7 +10,6 @@ if __name__ == "__main__":
     # Parse out the lines in the registry that have been added
     with open(sys.argv[1]) as fin:
         content = fin.read()
-        print(content)
         match = re.search(r"registry/data.txt:\s\[([\d,\s]*)\]", content)
         if not match:
             print("No registry files have changed.")

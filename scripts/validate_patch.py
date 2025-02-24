@@ -24,5 +24,7 @@ if __name__ == "__main__":
     registry = create_registry("registry/data.txt")
     for line in reg_lines:
         path, _ = line.split()
+        print(f"{path}\n  - downloading...")
         ds = xr.open_dataset(registry.fetch(path))
+        print("  - validating...")
         ILAMBDataset(ds=ds)

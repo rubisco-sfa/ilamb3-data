@@ -10,4 +10,5 @@ jobs:
         uses: hestonhoffman/changed-lines@v1
       - name: Print changed lines
         run: echo ${{ steps.changed_lines.outputs.changed_lines }}
-
+      - name: Operate on changed lines
+        run: python scripts/validate_patch.py ${{ steps.changed_lines.outputs.changed_lines }}

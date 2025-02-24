@@ -10,3 +10,16 @@ dependencies = [
     "pydantic>=2.10.6",
     "xarray>=2025.1.2",
 ]
+
+[build-system]
+build-backend = "setuptools.build_meta"
+requires = ["setuptools>=42", "setuptools-scm>=7"]
+
+[tool.setuptools]
+packages = ["ilamb3_data"]
+
+[tool.setuptools_scm]
+version_scheme = "no-guess-dev"
+local_scheme = "node-and-date"
+fallback_version = "0.0.0"
+write_to = "ilamb3_data/_version.py"

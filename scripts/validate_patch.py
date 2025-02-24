@@ -1,9 +1,28 @@
-import json
+import re
 import sys
 
+import xarray as xr
+from validate_dataset import ILAMBDataset
+
+from ilamb3_data import create_registry
+
 if __name__ == "__main__":
-    print(sys.argv)
+    # Parse out the lines in the registry that have been added
     with open(sys.argv[1]) as fin:
-        lines_changed = json.load(fin)
-        print(type(lines_changed))
-        print(lines_changed)
+        content = fin.read()
+        match = re.search(r"registry/data.txt:\s\[([\d,\s]*)\]", content)
+        if not match:
+            sys.exit(0)
+        lines = [int(i.strip()) - 1 for i in match.group(1).split(",")]
+
+    # Open the registry and reduce by just the lines that were changed
+    with open("registry/data.txt") as fin:
+        reg_lines = fin.readlines()
+    reg_lines = [reg_lines[i] for i in lines]
+
+    # Download and validate these entries
+    registry = create_registry("registry/data.txt")
+    for line in reg_lines:
+        path, _ = line.split()
+        ds = xr.open_dataset(registry.fetch(path))
+        ILAMBDataset(ds=ds)

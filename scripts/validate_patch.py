@@ -12,6 +12,7 @@ if __name__ == "__main__":
         content = fin.read()
         match = re.search(r"registry/data.txt:\s\[([\d,\s]*)\]", content)
         if not match:
+            print("No registry files have changed.")
             sys.exit(0)
         lines = [int(i.strip()) - 1 for i in match.group(1).split(",")]
 

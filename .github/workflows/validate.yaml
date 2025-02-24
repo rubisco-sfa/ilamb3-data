@@ -1,0 +1,20 @@
+on: [ pull_request ]
+
+jobs:
+  validate_registry_additions:
+    runs-on: ubuntu-latest
+    steps:
+
+      - uses: actions/checkout@v4
+      - name: Find changed lines
+        id: changed_lines
+        uses: hestonhoffman/changed-lines@v1
+
+      - name: Install uv environment
+        uses: astral-sh/setup-uv@v4
+
+      - name: Install ilamb3-data and dependencies
+        run: uv sync
+
+      - name: Check the registry additions
+        run: uv run python scripts/validate_patch.py ${{ steps.changed_lines.outputs.changed_lines }}

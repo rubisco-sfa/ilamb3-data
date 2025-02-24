@@ -1,1 +1,15 @@
 # Data we are exploring adding to main.yaml
+WECANN-gpp:
+  sources:
+    gpp: WECANN/gpp.nc
+  variable_cmap: Greens
+
+WECANN-hfls:
+  sources:
+    gpp: WECANN/hfls.nc
+  variable_cmap: Oranges
+
+WECANN-hfss:
+  sources:
+    gpp: WECANN/hfss.nc
+  variable_cmap: Oranges

@@ -7,15 +7,17 @@ from validate_dataset import ILAMBDataset
 from ilamb3_data import create_registry
 
 if __name__ == "__main__":
+    if len(sys.argv) < 2:
+        print("No registry files have changed.")
+
     # Parse out the lines in the registry that have been added
-    with open(sys.argv[1]) as fin:
-        content = fin.read()
-        print(f"{content=}")
-        match = re.search(r"registry/data.txt:\s\[([\d,\s]*)\]", content)
-        if not match:
-            print("No registry files have changed.")
-            sys.exit(0)
-        lines = [int(i.strip()) - 1 for i in match.group(1).split(",")]
+    content = " ".join(sys.argv[1:])
+    print(f"{content=}")
+    match = re.search(r"registry/data.txt:\s\[([\d,\s]*)\]", content)
+    if not match:
+        print("No registry files have changed.")
+        sys.exit(0)
+    lines = [int(i.strip()) - 1 for i in match.group(1).split(",")]
 
     # Open the registry and reduce by just the lines that were changed
     with open("registry/data.txt") as fin:

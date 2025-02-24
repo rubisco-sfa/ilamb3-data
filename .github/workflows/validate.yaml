@@ -20,4 +20,4 @@ jobs:
         run: uv sync
 
       - name: Operate on changed lines
-        run: uv run python scripts/validate_patch.py $GITHUB_OUTPUT
+        run: uv run python scripts/validate_patch.py ${{ steps.changed_lines.outputs.changed_lines }}

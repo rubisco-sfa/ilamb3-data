@@ -17,7 +17,7 @@ def create_registry(registry_file: str) -> pooch.Pooch:
 
     registry = pooch.create(
         path=pooch.os_cache("ilamb3"),
-        base_url="https://www.ilamb.org/ILAMB-Data/DATA",
+        base_url="https://www.ilamb.org/ilamb3-data",
         version="0.1",
         env="ILAMB_ROOT",
     )

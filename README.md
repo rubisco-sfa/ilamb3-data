@@ -13,12 +13,14 @@ dependencies. You can keep conda around if you are using that. Just first issue
 
 - Each code project I have now has its own environment that is stored (not
   committed) in a `.venv` folder. Once you clone this repo, you can navigate
-  inside it and issue a `uv sync` to build the environment. 
+  inside it and issue a `uv sync` to build the environment from the pyropject.toml. 
 - You don't have to activate the environment if you don't want to. You can issue
   for example `uv run python scripts/check` and `uv` will run your command with
   the environment. 
 - You can however activate the environment if you wish with `source
   .venv/bin/activate` and deactivate the same as with conda.
+- If you want to install a dependency to our project, type `uv pip install PACKAGE_NAME`
+  - You may have to install gdal on your system. For mac users: `brew install gdal`
 - If you want to add a dependency to our project, then type `uv add
   PACKAGE_NAME` and it will automatically place it in the pyproject.toml file. 
 - `uv` is 10-100x faster than pip

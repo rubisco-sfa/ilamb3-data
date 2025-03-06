@@ -106,102 +106,101 @@ class ILAMBDataset(BaseModel):
         time_attrs = time_var.attrs
         if not time_dim_present:
             raise ValueError(f"Dataset does not have a time dimension, {dimensions=}")
-        else:
-            # check if time values are decoded as datetime objects
-            time_dtype = type(time_var.values[0])
-            if not (
-                np.issubdtype(time_var.values.dtype, np.datetime64)
-                or isinstance(time_var.values[0], cftime.datetime)
-            ):
-                raise TypeError(
-                    f"Time values are not properly decoded as datetime objects: {time_dtype=}"
-                )
+        # Check if time values are decoded as datetime objects
+        time_dtype = type(time_var.values[0])
+        if not (
+            np.issubdtype(time_var.values.dtype, np.datetime64)
+            or isinstance(time_var.values[0], cftime.datetime)
+        ):
+            raise TypeError(
+                f"Time values are not properly decoded as datetime objects: {time_dtype=}"
+            )
 
-            # check for time attributes: axis, long_name
-            missing = set(["axis", "long_name"]) - set(time_attrs)
-            if missing:
-                raise ValueError(
-                    f"Dataset is missing time-specific attributes, {missing=}"
-                )
+        # Check for time attributes: axis, long_name
+        missing = set(["axis", "long_name"]) - set(time_attrs)
+        if missing:
+            raise ValueError(f"Dataset is missing time-specific attributes, {missing=}")
 
-            # check that time units are encoded (and formatted correctly)
-            encoding = time_var.encoding
-            if "units" not in encoding or "since" not in encoding["units"]:
-                raise ValueError(
-                    f"Time encoding is missing or incorrect, {encoding=}. Expected 'days since YYYY:MM:DD HH:MM'"
-                )
+        # Check that time units are encoded (and formatted correctly)
+        time_encoding = time_var.encoding
+        if "units" not in time_encoding or "since" not in time_encoding["units"]:
+            raise ValueError(
+                f"Time encoding is missing or incorrect, {time_encoding=}. Expected 'days since YYYY:MM:DD HH:MM'"
+            )
 
-            # Check if time calendar is encoded
-            if "calendar" in encoding:
-                valid_calendars = {
-                    "standard",
-                    "gregorian",
-                    "proleptic_gregorian",
-                    "noleap",
-                    "all_leap",
-                    "360_day",
-                    "julian",
-                }
+        # Check if time calendar is encoded
+        if "calendar" in time_encoding:
+            valid_calendars = [
+                "standard",
+                "gregorian",
+                "proleptic_gregorian",
+                "noleap",
+                "all_leap",
+                "360_day",
+                "julian",
+            ]
 
-                if encoding["calendar"] in valid_calendars:
-                    pass
-                else:
-                    # Check for explicitly defined calendar attributes
-                    if "month_lengths" in time_attrs:
-                        pass
-
-                        # Validate month_lengths
-                        month_lengths = time_attrs["month_lengths"]
-                        if len(month_lengths) != 12 or not all(
-                            isinstance(m, (int, np.integer)) for m in month_lengths
-                        ):
-                            raise ValueError(
-                                "month_lengths must be a list of 12 integer values."
-                            )
-
-                        # Validate leap year settings if present
-                        if "leap_year" in time_attrs:
-                            leap_year = time_attrs["leap_year"]
-                            if not isinstance(leap_year, (int, np.integer)):
-                                raise ValueError("leap_year must be an integer.")
-
-                            if "leap_month" in time_attrs:
-                                leap_month = time_attrs["leap_month"]
-                                if not (1 <= leap_month <= 12):
-                                    raise ValueError(
-                                        "leap_month must be between 1 and 12."
-                                    )
-                    else:
+            if time_encoding["calendar"] not in valid_calendars:
+                # Check for explicitly defined calendar attributes
+                if "month_lengths" in time_attrs:
+                    # Validate month_lengths
+                    month_lengths = time_attrs["month_lengths"]
+                    if len(month_lengths) != 12 or not all(
+                        isinstance(m, (int, np.integer)) for m in month_lengths
+                    ):
                         raise ValueError(
-                            f"Unrecognized calendar '{encoding['calendar']}' and no explicit month_lengths provided."
+                            "month_lengths must be a list of 12 integer values."
                         )
 
-            else:
-                raise ValueError(f"No calendar attribute found, {time_attrs=}")
+                    # Validate leap year settings if present
+                    if "leap_year" in time_attrs:
+                        leap_year = time_attrs["leap_year"]
+                        if not isinstance(leap_year, (int, np.integer)):
+                            raise ValueError("leap_year must be an integer.")
 
-            # check if bounds are encoded
-            time_bounds_name = time_attrs["bounds"]
-            if time_bounds_name not in ds:
-                raise ValueError(
-                    f"Time bounds variable '{time_bounds_name=}' is missing from dataset. Expected 'time_bounds'"
-                )
+                        if "leap_month" in time_attrs:
+                            leap_month = time_attrs["leap_month"]
+                            if not (1 <= leap_month <= 12):
+                                raise ValueError("leap_month must be between 1 and 12.")
+                else:
+                    raise ValueError(
+                        f"Unrecognized calendar '{time_encoding['calendar']}' and no explicit month_lengths provided."
+                    )
+        else:
+            raise ValueError("Calendar attribute is missing from the time encoding.")
 
-            # Validate time_bounds structure
-            time_bounds = ds[time_bounds_name]
-            if time_bounds.dims != ("time", "nv"):
-                raise ValueError(
-                    f"Time bounds '{time_bounds_name=}' has incorrect dimensions {time_bounds.dims}. Expected ('time', 'nv')."
-                )
+        # Check if bounds are encoded
+        time_bounds_name = time_attrs["bounds"]
+        if time_bounds_name not in ds:
+            raise ValueError(
+                f"Time bounds variable '{time_bounds_name=}' is missing from dataset. Expected 'time_bounds'"
+            )
 
-            if (
-                "long_name" not in time_bounds.attrs
-                or time_bounds.attrs["long_name"] != "time_bounds"
-            ):
-                raise ValueError(
-                    f"Time bounds '{time_bounds_name=}' is missing its 'long_name':'time_bounds' attribute."
-                )
+        # Validate time_bounds structure
+        time_bounds = ds[time_bounds_name]
+        if len(time_bounds.dims) != 2 or time_bounds.dims[0] != "time":
+            raise ValueError(
+                f"Time bounds, '{time_bounds_name=}', has incorrect dimensions, {time_bounds.dims}."
+                "Expected two dimensions: ('time', <second_dimension>)."
+            )
 
-            return ds
+        # Check that the second dimension length is 2 (indicating time bounds)
+        if time_bounds.shape[1] != 2:
+            raise ValueError(
+                f"Time bounds '{time_bounds_name}' has incorrect shape {time_bounds.shape}. "
+                "The second dimension should have length 2 to represent time bounds."
+            )
+
+        # Check for the correct 'long_name' attribute
+        if (
+            "long_name" not in time_bounds.attrs
+            or time_bounds.attrs["long_name"] != "time_bounds"
+        ):
+            raise ValueError(
+                f"Time bounds '{time_bounds_name}' is missing its 'long_name':'time_bounds' attribute."
+            )
+
+        return ds
 
     @field_validator("ds")
     @classmethod

@@ -19,8 +19,9 @@ dependencies. You can keep conda around if you are using that. Just first issue
   the environment. 
 - You can however activate the environment if you wish with `source
   .venv/bin/activate` and deactivate the same as with conda.
-- If you want to install a dependency to our project, type `uv pip install PACKAGE_NAME`
-  - You may have to install gdal on your system. For mac users: `brew install gdal`
+- If you want to install a dependency without adding it to the project pyproject.toml: `uv pip install PACKAGE_NAME`
+  - For certain geospatial packages, you may have to install gdal on your system. 
+    - For mac users: `brew install gdal`
 - If you want to add a dependency to our project, then type `uv add
   PACKAGE_NAME` and it will automatically place it in the pyproject.toml file. 
 - `uv` is 10-100x faster than pip

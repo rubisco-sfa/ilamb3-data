@@ -60,6 +60,7 @@ out = xr.Dataset(data_vars=data, coords=coords)
 out["time"] = fix_time(out)
 out["lat"] = fix_lat(out)
 out["lon"] = fix_lon(out)
+out = out.sortby(["time", "lat", "lon"])
 time_mark = f"{out["time"].min().dt.year:d}{out["time"].min().dt.month:02d}"
 time_mark += f"-{out["time"].max().dt.year:d}{out["time"].max().dt.month:02d}"
 attrs = {

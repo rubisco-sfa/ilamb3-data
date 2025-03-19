@@ -117,9 +117,11 @@ class ILAMBDataset(BaseModel):
             )
 
         # Check for time attributes: axis, long_name
-        missing = set(["axis", "long_name"]) - set(time_attrs)
+        missing = set(["axis", "long_name", "standard_name"]) - set(time_attrs)
         if missing:
-            raise ValueError(f"Dataset is missing time-specific attributes, {missing=}")
+            raise ValueError(
+                f"Dataset is missing time-specific attributes, {missing=}. We recommend axis=T"
+            )
 
         # Check that time units are encoded (and formatted correctly)
         time_encoding = time_var.encoding
@@ -205,13 +207,73 @@ class ILAMBDataset(BaseModel):
     @field_validator("ds")
     @classmethod
     def lat_dim(cls, ds: xr.Dataset) -> xr.Dataset:
-        # Check that the dataset has a properly set-up lat dimension
+        # Check that the dataset has a properly set-up latitude dimension
+        lat_names = {"lat", "latitude", "y"}
+        dims = ds.dims
+        dims_lower = {
+            dim.lower(): dim for dim in dims
+        }  # Map lowercased dims to original names
+        lat_name = next(
+            (
+                dims_lower[name.lower()]
+                for name in lat_names
+                if name.lower() in dims_lower
+            ),
+            None,
+        )
+
+        # check that one of the accepted latitutde long_names exists
+        if not lat_name:
+            raise ValueError(
+                f"Dataset does not have an accepted latitude dimension, {dims=}. Expected one of {lat_names} (case insensitive)."
+            )
+
+        # check that axis and long_name attributes are present
+        else:
+            lat_var = ds[lat_name]
+            lat_attrs = lat_var.attrs
+            missing = set(["axis", "long_name"]) - set(lat_attrs)
+            if missing:
+                raise ValueError(
+                    f"Dataset is missing latitude-specific attributes, {missing=}"
+                )
+
         return ds
 
     @field_validator("ds")
     @classmethod
     def lon_dim(cls, ds: xr.Dataset) -> xr.Dataset:
-        # Check that the dataset has a properly set-up lon dimension
+        # Check that the dataset has a properly set-up latitude dimension
+        lon_names = {"lon", "longitude", "x"}
+        dims = ds.dims
+        dims_lower = {
+            dim.lower(): dim for dim in dims
+        }  # Map lowercased dims to original names
+        lon_name = next(
+            (
+                dims_lower[name.lower()]
+                for name in lon_names
+                if name.lower() in dims_lower
+            ),
+            None,
+        )
+
+        # check that one of the accepted latitutde long_names exists
+        if not lon_name:
+            raise ValueError(
+                f"Dataset does not have an accepted latitude dimension, {dims=}. Expected one of {lon_names} (case insensitive)."
+            )
+
+        # check that axis and long_name attributes are present
+        else:
+            lon_var = ds[lon_name]
+            lon_attrs = lon_var.attrs
+            missing = set(["axis", "long_name"]) - set(lon_attrs)
+            if missing:
+                raise ValueError(
+                    f"Dataset is missing latitude-specific attributes, {missing=}"
+                )
+
         return ds
 
 

@@ -1,3 +1,4 @@
+import datetime
 import os
 
 import pooch
@@ -53,9 +54,7 @@ def download_file(remote_source: str, local_source: str | None = None) -> str:
 def get_cmip6_variable_info(variable_id: str) -> dict[str, str]:
     """ """
     df = ESGFCatalog().variable_info(variable_id)
-    return {
-        key.replace("variable_", ""): val for key, val in df.iloc[0].to_dict().items()
-    }
+    return df.iloc[0].to_dict()
 
 
 def fix_time(ds: xr.Dataset) -> xr.DataArray:
@@ -92,3 +91,11 @@ def fix_lon(ds: xr.Dataset) -> xr.DataArray:
         "long_name": "longitude",
     }
     return da
+
+
+def gen_utc_timestamp(time: float | None = None) -> str:
+    if time is None:
+        time = datetime.datetime.now(datetime.UTC)
+    else:
+        time = datetime.datetime.fromtimestamp(time)
+    return time.strftime("%Y-%m-%dT%H:%M:%SZ")

@@ -4,7 +4,13 @@ import time
 import cftime as cf
 import xarray as xr
 
-from ilamb3_data import download_file
+from ilamb3_data import (
+    download_file,
+    fix_lat,
+    fix_lon,
+    fix_time,
+    get_cmip6_variable_info,
+)
 
 RENAME = {"GPP": "gpp", "H": "hfss", "LE": "hfls"}
 
@@ -41,14 +47,27 @@ for var, da in data.items():
     data[var].attrs["units"] = da.attrs["Units"].replace("gC", "g")
     data[var].attrs.pop("Units")
 
+# Populate information from CMIP6 variable information
+for var, da in data.items():
+    info = get_cmip6_variable_info(var)
+    info.pop("units")
+    data[var].attrs.update(info)
+
 # Encode the dataset
 out = xr.Dataset(data_vars=data, coords=coords)
+
+# Fix up the dimensions
+out["time"] = fix_time(out)
+out["lat"] = fix_lat(out)
+out["lon"] = fix_lon(out)
+time_mark = f"{out["time"].min().dt.year:d}{out["time"].min().dt.month:02d}"
+time_mark += f"-{out["time"].max().dt.year:d}{out["time"].max().dt.month:02d}"
 attrs = {
     "title": "Water, Energy, and Carbon with Artificial Neural Networks (WECANN)",
     "version": "1",
-    "institutions": "Columbia University",
+    "institution": "Columbia University",
     "source": "Solar Induced Fluorescence (SIF), Air Temperature, Precipitation, Net Radiation, Soil Moisture, and Snow Water Equivalent",
-    "history": """,
+    "history": """
 %s: downloaded %s;
 %s: converted to ILAMB-ready netCDF"""
     % (
@@ -67,16 +86,31 @@ attrs = {
   page = {4101--4124},
   doi = {https://doi.org/10.5194/bg-14-4101-2017}
 }""",
+    "activity_id": "obs4MIPs",
+    "frequency": "mon",
+    "grid_label": "gn",
+    "grid": "1x1 deg",
+    "institution_id": "Columbia",
+    "nominal_resolution": "1x1 deg",
+    "product": "observations",
+    "realm": "land",
+    "source_id": "WECANN",
+    "source_type": "observations",
+    "source_version_number": "v1",
+    "variant_label": "r1i1p1f1",
 }
+
 
 # Write out files
 for var, da in out.items():
     dsv = da.to_dataset()
-    dsv.attrs = attrs
+    dsv.attrs = attrs | {
+        "variable_id": var,
+        "cf_standard_name": dsv[var].attrs.pop("cf_standard_name"),
+    }
     dsv.to_netcdf(
-        f"{var}.nc",
-        encoding={
-            var: {"zlib": True},
-            "time": {"units": "days since 1850-01-01"},
-        },
+        "{variable_id}_{frequency}_{source_id}_{institution_id}_{grid_label}_{time_mark}.nc".format(
+            **dsv.attrs, time_mark=time_mark
+        ),
+        encoding={var: {"zlib": True}},
     )

@@ -10,19 +10,17 @@ dependencies = [
     "pandas>=2.2.3",
     "pooch>=1.8.2",
     "pydantic>=2.10.6",
+    "requests>=2.32.3",
+    "tqdm>=4.67.1",
     "rioxarray==0.18.2",
     "xarray>=2025.1.2",
+    "intake-esgf>=2024.12.7",
+    "cf-xarray>=0.10.4",
 ]
 
 [build-system]
 build-backend = "setuptools.build_meta"
-requires = ["setuptools>=42", "setuptools-scm>=7"]
+requires = ["setuptools>=42"]
 
 [tool.setuptools]
 packages = ["ilamb3_data"]
-
-[tool.setuptools_scm]
-version_scheme = "no-guess-dev"
-local_scheme = "node-and-date"
-fallback_version = "0.0.0"
-write_to = "ilamb3_data/_version.py"

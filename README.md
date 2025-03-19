@@ -73,3 +73,11 @@ This is how I propose adding a dataset would work:
 - Given the PR, find a way to regenerate website listing of data.
     - It may be that we go to the website repo and create an action to daily
       rebuild the list of datasets from items in the registry in this repo.
+
+## How to sync if you have access
+
+From the repository head:
+
+```bash
+rsync -avz --exclude=*.py --exclude=*_raw* data/ USER@climatemodeling.org:html/ilamb3-data/
+```

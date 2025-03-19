@@ -82,7 +82,7 @@ class ILAMBDataset(BaseModel):
         missing = set(
             [
                 "title",
-                "version",
+                "source_version_number",
                 "institution",
                 "source",
                 "history",

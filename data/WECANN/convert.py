@@ -108,7 +108,7 @@ attrs = {
     "source_type": "statistical-estimates",
     "source_version_number": "1",
     "title": "Water, Energy, and Carbon with Artificial Neural Networks (WECANN)",
-    "variant_label": "ILAMB",
+    "variant_label": "BE",
 }
 
 

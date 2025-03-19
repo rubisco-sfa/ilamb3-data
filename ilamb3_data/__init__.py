@@ -1,6 +1,7 @@
 import datetime
 import os
 
+import numpy as np
 import pooch
 import requests
 import xarray as xr
@@ -99,3 +100,32 @@ def gen_utc_timestamp(time: float | None = None) -> str:
     else:
         time = datetime.datetime.fromtimestamp(time)
     return time.strftime("%Y-%m-%dT%H:%M:%SZ")
+
+
+def add_time_bounds_monthly(ds: xr.Dataset) -> xr.Dataset:
+    def _to_tuple(da: xr.DataArray) -> tuple[int]:
+        if da.size != 1:
+            raise ValueError("Single element conversions only")
+        return (int(da.dt.year), int(da.dt.month), int(da.dt.day))
+
+    def _stamp(t: xr.DataArray, ymd: tuple[int]):
+        cls = t.item().__class__
+        try:
+            stamp = cls(*ymd)
+        except Exception:  # assume it was datetime64
+            stamp = np.datetime64(f"{ymd[0]:4d}-{ymd[1]:02d}-{ymd[2]:02d}")
+        return stamp
+
+    tlow = []
+    thi = []
+    for t in ds["time"]:
+        year, month, _ = _to_tuple(t)
+        tlow.append(_stamp(t, (year, month, 1)))
+        thi.append(
+            _stamp(t, (year + (month == 12), (month + 1) if (month < 12) else 1, 1))
+        )
+    tb = np.array([tlow, thi]).T
+    ds = ds.assign_coords({"time_bounds": (("time", "bounds"), tb)})
+    ds["time_bounds"].attrs["long_name"] = "time_bounds"
+    ds["time"].attrs["bounds"] = "time_bounds"
+    return ds

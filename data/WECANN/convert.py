@@ -1,9 +1,11 @@
 from pathlib import Path
 
+import cf_xarray  # noqa
 import cftime as cf
 import xarray as xr
 
 from ilamb3_data import (
+    add_time_bounds_monthly,
     download_file,
     fix_lat,
     fix_lon,
@@ -60,6 +62,8 @@ out["time"] = fix_time(out)
 out["lat"] = fix_lat(out)
 out["lon"] = fix_lon(out)
 out = out.sortby(["time", "lat", "lon"])
+out = out.cf.add_bounds(["lat", "lon"])
+out = add_time_bounds_monthly(out)
 time_range = f"{out["time"].min().dt.year:d}{out["time"].min().dt.month:02d}"
 time_range += f"-{out["time"].max().dt.year:d}{out["time"].max().dt.month:02d}"
 
@@ -71,6 +75,7 @@ attrs = {
     "creation_data": generate_stamp,
     "dataset_contributor": "Nathan Collier",
     "data_specs_version": "2.5",
+    "doi": "N/A",
     "frequency": "mon",
     "grid": "1x1 degree",
     "grid_label": "gn",
@@ -111,10 +116,10 @@ attrs = {
     "variant_label": "BE",
 }
 
-
 # Write out files
 for var, da in out.items():
     dsv = da.to_dataset()
+    dsv = out.drop_vars(set(out) - set([var]))
     dsv.attrs = attrs | {"variable_id": var}
     dsv.to_netcdf(
         "{variable_id}_{frequency}_{source_id}_{variant_label}_{grid_label}_{time_mark}.nc".format(

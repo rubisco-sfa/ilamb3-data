@@ -47,6 +47,18 @@ wheels = [
 ]
 
 [[package]]
+name = "cf-xarray"
+version = "0.10.4"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "xarray" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/ba/4a/8949993e96c4a69d885351d422106376b8c6b14c83d712e09381898374e2/cf_xarray-0.10.4.tar.gz", hash = "sha256:047dd732cc7f154c7aa9d5c00b77c64e2c538258f0b6e7565a4b2c7715ee8aba", size = 513416 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/60/c1/77f0fbdae53ca5b0574646c1078eab49e9a200709c2e892deae6493d1368/cf_xarray-0.10.4-py3-none-any.whl", hash = "sha256:57032b9c78b002545b0dcac7e437ea119d27a7d906f61273188b56f2c3eb02c7", size = 70888 },
+]
+
+[[package]]
 name = "cffi"
 version = "1.17.1"
 source = { registry = "https://pypi.org/simple" }
@@ -281,6 +293,7 @@ name = "ilamb3-data"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cf-xarray" },
     { name = "dask" },
     { name = "intake-esgf" },
     { name = "netcdf4" },
@@ -295,6 +308,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cf-xarray", specifier = ">=0.10.4" },
     { name = "dask", specifier = ">=2025.2.0" },
     { name = "intake-esgf", specifier = ">=2024.12.7" },
     { name = "netcdf4", specifier = ">=1.7.2" },

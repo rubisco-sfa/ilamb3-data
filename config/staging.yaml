@@ -13,3 +13,8 @@ WECANN-hfss:
   sources:
     gpp: WECANN/hfls_mon_WECANN_BE_gn_200701-201512.nc
   variable_cmap: Oranges
+
+LORA-mrro:
+  sources:
+    mrro: LORA/mrro_mon_LORA_BE_gn_198001-201212.nc
+  variable_cmap: Blues

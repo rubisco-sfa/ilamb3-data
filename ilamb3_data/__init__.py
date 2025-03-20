@@ -41,7 +41,10 @@ def download_file(remote_source: str, local_source: str | None = None) -> str:
         local_source = os.path.basename(remote_source)
     if not os.path.isfile(local_source):
         resp = requests.get(remote_source, stream=True)
-        total_size = int(resp.headers.get("content-length"))
+        try:
+            total_size = int(resp.headers.get("content-length"))
+        except Exception:
+            total_size = None
         with open(local_source, "wb") as fdl:
             with tqdm(
                 total=total_size,
@@ -161,7 +164,7 @@ def gen_utc_timestamp(time: float | None = None) -> str:
     if time is None:
         time = datetime.datetime.now(datetime.UTC)
     else:
-        time = datetime.datetime.fromtimestamp(time)
+        time = datetime.datetime.utcfromtimestamp(time)
     return time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

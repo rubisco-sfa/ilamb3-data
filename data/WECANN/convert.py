@@ -64,8 +64,8 @@ out["lon"] = fix_lon(out)
 out = out.sortby(["time", "lat", "lon"])
 out = out.cf.add_bounds(["lat", "lon"])
 out = add_time_bounds_monthly(out)
-time_range = f"{out["time"].min().dt.year:d}{out["time"].min().dt.month:02d}"
-time_range += f"-{out["time"].max().dt.year:d}{out["time"].max().dt.month:02d}"
+time_range = f"{out['time'].min().dt.year:d}{out['time'].min().dt.month:02d}"
+time_range += f"-{out['time'].max().dt.year:d}{out['time'].max().dt.month:02d}"
 
 # Populate attributes
 attrs = {

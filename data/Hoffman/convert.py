@@ -1,12 +1,8 @@
 from pathlib import Path
 
-import cf_xarray  # noqa
 import xarray as xr
 
-from ilamb3_data import (
-    download_file,
-    gen_utc_timestamp,
-)
+from ilamb3_data import download_file, fix_time, gen_utc_timestamp
 
 # Download source
 remote_source = "https://www.ilamb.org/ILAMB-Data/DATA/nbp/HOFFMAN/nbp_1850-2010.nc"
@@ -20,6 +16,10 @@ generate_stamp = gen_utc_timestamp()
 
 # Load the dataset for adjustments
 ds = xr.open_dataset(local_source).load()
+ds = ds.assign_coords({v: ds[v] for v in ds if v.endswith("_bnds")})
+ds["time"] = fix_time(ds)
+ds["time"].attrs["bounds"] = "time_bnds"
+ds["time_bnds"].attrs["long_name"] = "time_bounds"
 
 # Fix up the dimensions
 time_range = f"{ds["time"].min().dt.year:d}{ds["time"].min().dt.month:02d}"

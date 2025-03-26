@@ -18,3 +18,14 @@ LORA-mrro:
   sources:
     mrro: LORA/mrro_mon_LORA_BE_gn_198001-201212.nc
   variable_cmap: Blues
+
+Hoffman-nbp:
+  analysis: nbp
+  sources:
+    nbp: Hoffman/nbp_yr_Hoffman_BE_gm_185007-201007.nc
+
+Hoffman-fgco2:
+  analysis: nbp
+  sources:
+    fgco2: Hoffman/fgco2_yr_Hoffman_BE_gm_185007-201007.nc
+    

@@ -111,6 +111,11 @@ for v, vname in VARIABLE_NAME.items():
     ds["climatology_bounds"] = (("time", "nbounds"), climatology_bounds)
     ds[vname].attrs["cell_methods"] = "time: mean within years time: mean over years"
 
+    # Move these data arrays to coordinates
+    ds = ds.assign_coords(
+        ds[["lat_bnds", "lon_bnds", "depth_bnds", "climatology_bounds", f"{vname}_se"]]
+    )
+
     # Populate attributes
     ds.attrs = {
         "activity_id": "obs4MIPs",

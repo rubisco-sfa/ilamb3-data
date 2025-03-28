@@ -189,6 +189,10 @@ class ILAMBDataset(BaseModel):
         else:
             raise ValueError("Calendar attribute is missing from the time encoding.")
 
+        # Some could be climatologies, no check for now
+        if "climatology" in time_attrs:
+            return ds
+
         # Check bounds encoding
         time_bounds_name = time_attrs["bounds"]
         if time_bounds_name not in ds:

@@ -1,8 +1,9 @@
 from pathlib import Path
 
+import cftime as cf
 import xarray as xr
 
-from ilamb3_data import gen_utc_timestamp
+from ilamb3_data import add_time_bounds_monthly, fix_time, gen_utc_timestamp
 
 # Download source, cannot be downloaded automatically
 remote_source = "https://rapid.ac.uk/data/data-download"
@@ -14,8 +15,18 @@ generate_stamp = gen_utc_timestamp()
 
 # Load the dataset for adjustments
 ds = xr.open_dataset(local_source).load()
-
-ds = ds["moc_mar_hc10"].to_dataset(name="amoc")
+ds = ds.assign_coords({"YYYYMM": ds["time"].dt.year * 100 + ds["time"].dt.month})
+ds = ds.groupby("YYYYMM").mean().rename({"YYYYMM": "time"})
+ds["time"] = [
+    cf.DatetimeNoLeap(int(ym / 100), (ym - int(ym / 100) * 100), 15)
+    for ym in ds["time"]
+]
+ds = add_time_bounds_monthly(ds)
+ds = ds.assign_coords({"time_bounds": ds["time_bounds"]})
+ds["time"] = fix_time(ds)
+ds = ds.drop_vars([v for v in ds.data_vars if v != "moc_mar_hc10"]).rename_vars(
+    {"moc_mar_hc10": "amoc"}
+)
 ds["amoc"].attrs = {
     "standard_name": "overturning transport",
     "long_name": "Atlantic meridonal overturning transport at 26 degrees latitude",
@@ -35,7 +46,7 @@ ds.attrs = {
     "dataset_contributor": "Nathan Collier",
     "data_specs_version": "2.5",
     "doi": "10.5285/223b34a32dc5c945e0637086abc0f274",
-    "frequency": "12hr",
+    "frequency": "mon",
     "grid": "N/A",
     "grid_label": "NA",
     "history": f"""

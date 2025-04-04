@@ -6,12 +6,12 @@ import xarray as xr
 
 from ilamb3_data import (
     add_time_bounds_monthly,
-    download_file,
-    fix_lat,
-    fix_lon,
-    fix_time,
+    download_from_html,
     gen_utc_timestamp,
     get_cmip6_variable_info,
+    set_lat_attrs,
+    set_lon_attrs,
+    set_time_attrs,
 )
 
 RENAME = {"GPP": "gpp", "H": "hfss", "LE": "hfls"}
@@ -23,7 +23,7 @@ local_source = Path("_raw")
 local_source.mkdir(parents=True, exist_ok=True)
 local_source = local_source / Path(remote_source).name
 if not local_source.is_file():
-    download_file(remote_source, str(local_source))
+    download_from_html(remote_source, str(local_source))
 download_stamp = gen_utc_timestamp(local_source.stat().st_mtime)
 generate_stamp = gen_utc_timestamp()
 
@@ -58,9 +58,9 @@ for var, da in data.items():
 out = xr.Dataset(data_vars=data, coords=coords)
 
 # Fix up the dimensions
-out["time"] = fix_time(out)
-out["lat"] = fix_lat(out)
-out["lon"] = fix_lon(out)
+out = set_time_attrs(out)
+out = set_lon_attrs(out)
+out = set_lat_attrs(out)
 out = out.sortby(["time", "lat", "lon"])
 out = out.cf.add_bounds(["lat", "lon"])
 out = add_time_bounds_monthly(out)

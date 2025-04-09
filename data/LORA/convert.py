@@ -5,11 +5,11 @@ import xarray as xr
 
 from ilamb3_data import (
     add_time_bounds_monthly,
-    download_file,
-    fix_lat,
-    fix_lon,
-    fix_time,
+    download_from_html,
     gen_utc_timestamp,
+    set_lat_attrs,
+    set_lon_attrs,
+    set_time_attrs,
 )
 
 # Download source
@@ -23,7 +23,7 @@ for remote_source in remote_sources:
     local_source.mkdir(parents=True, exist_ok=True)
     source = local_source / Path(remote_source).name
     if not source.is_file():
-        download_file(remote_source, str(source))
+        download_from_html(remote_source, str(source))
     local_sources.append(source)
 download_stamp = gen_utc_timestamp(local_sources[0].stat().st_mtime)
 generate_stamp = gen_utc_timestamp()
@@ -35,14 +35,14 @@ out["mrro_sd"].attrs["long_name"] = "runoff_flux standard_deviation"
 out["mrro_sd"].attrs["stadard_name"] = "runoff_flux standard_deviation"
 
 # Fix up the dimensions
-out["time"] = fix_time(out)
-out["lat"] = fix_lat(out)
-out["lon"] = fix_lon(out)
+out = set_time_attrs(out)
+out = set_lat_attrs(out)
+out = set_lon_attrs(out)
 out = out.sortby(["time", "lat", "lon"])
 out = out.cf.add_bounds(["lat", "lon"])
 out = add_time_bounds_monthly(out)
-time_range = f"{out["time"].min().dt.year:d}{out["time"].min().dt.month:02d}"
-time_range += f"-{out["time"].max().dt.year:d}{out["time"].max().dt.month:02d}"
+time_range = f"{out['time'].min().dt.year:d}{out['time'].min().dt.month:02d}"
+time_range += f"-{out['time'].max().dt.year:d}{out['time'].max().dt.month:02d}"
 
 # Populate attributes
 attrs = {

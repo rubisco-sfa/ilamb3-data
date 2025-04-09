@@ -33,30 +33,84 @@ def create_registry(registry_file: str) -> pooch.Pooch:
     return registry
 
 
-def download_file(remote_source: str, local_source: str | None = None) -> str:
+def download_from_html(remote_source: str, local_source: str | None = None) -> str:
     """
-    Download the specified file to a local location.
+    Download a file from a remote URL to a local path.
+    If the "content-length" header is missing, it falls back to a simple download.
     """
     if local_source is None:
         local_source = os.path.basename(remote_source)
-    if not os.path.isfile(local_source):
-        resp = requests.get(remote_source, stream=True)
-        try:
-            total_size = int(resp.headers.get("content-length"))
-        except Exception:
-            total_size = None
-        with open(local_source, "wb") as fdl:
+    if os.path.isfile(local_source):
+        return local_source
+
+    resp = requests.get(remote_source, stream=True)
+    try:
+        total_size = int(resp.headers.get("content-length"))
+    except (TypeError, ValueError):
+        total_size = 0
+
+    with open(local_source, "wb") as fdl:
+        if total_size:
             with tqdm(
-                total=total_size,
-                unit="B",
-                unit_scale=True,
-                desc=local_source,
+                total=total_size, unit="B", unit_scale=True, desc=local_source
             ) as pbar:
                 for chunk in resp.iter_content(chunk_size=1024):
                     if chunk:
                         fdl.write(chunk)
                         pbar.update(len(chunk))
+        else:
+            for chunk in resp.iter_content(chunk_size=1024):
+                if chunk:
+                    fdl.write(chunk)
     return local_source
+
+
+def download_from_zenodo(record: dict):
+    """
+    Download all files from a Zenodo record dict into a '_temp' directory.
+    Example for getting a Zenodo record:
+
+        # Specify the dataset title you are looking for
+        dataset_title = "Global Fire Emissions Database (GFED5) Burned Area"
+
+        # Build the query string to search by title
+        params = {
+            "q": f'title:"{dataset_title}"'
+        }
+
+        # Define the Zenodo API endpoint
+        base_url = "https://zenodo.org/api/records"
+
+        # Send the GET request
+        response = requests.get(base_url, params=params)
+        if response.status_code != 200:
+            print("Error during search:", response.status_code)
+            exit(1)
+
+        # Parse the JSON response
+        data = response.json()
+
+        # Get record dictionary
+        records = data['hits']['hits']
+        record = data['hits']['hits'][0]
+    """
+    download_dir = "_temp"
+    os.makedirs(download_dir, exist_ok=True)
+
+    title = record.get("metadata", {}).get("title", "No Title")
+    pub_date = record.get("metadata", {}).get("publication_date", "No publication date")
+    print(f"Found record:\n  Title: {title}\n  Publication Date: {pub_date}")
+
+    for file_info in record.get("files", []):
+        file_name = file_info.get("key")
+        file_url = file_info.get("links", {}).get("self")
+        local_file = os.path.join(download_dir, file_name)
+
+        if file_url:
+            print(f"Downloading {file_name} from {file_url} into {download_dir}...")
+            download_from_html(file_url, local_source=local_file)
+        else:
+            print(f"File URL not found for file: {file_name}")
 
 
 # I think this can be useful to make sure people export the netcdfs the same way every time
@@ -101,7 +155,7 @@ def get_cmip6_variable_info(variable_id: str) -> dict[str, str]:
     return df.iloc[0].to_dict()
 
 
-def fix_time(ds: xr.Dataset) -> xr.DataArray:
+def set_time_attrs(ds: xr.Dataset) -> xr.Dataset:
     """
     Ensure the xarray dataset's time attributes are formatted according to CF-Conventions.
     """
@@ -127,10 +181,11 @@ def fix_time(ds: xr.Dataset) -> xr.DataArray:
         "standard_name": "time",
         "long_name": "time",
     }
-    return da
+    ds["time"] = da
+    return ds
 
 
-def fix_lat(ds: xr.Dataset) -> xr.DataArray:
+def set_lat_attrs(ds: xr.Dataset) -> xr.Dataset:
     """
     Ensure the xarray dataset's latitude attributes are formatted according to CF-Conventions.
     """
@@ -142,10 +197,11 @@ def fix_lat(ds: xr.Dataset) -> xr.DataArray:
         "standard_name": "latitude",
         "long_name": "latitude",
     }
-    return da
+    ds["lat"] = da
+    return ds
 
 
-def fix_lon(ds: xr.Dataset) -> xr.DataArray:
+def set_lon_attrs(ds: xr.Dataset) -> xr.Dataset:
     """
     Ensure the xarray dataset's longitude attributes are formatted according to CF-Conventions.
     """
@@ -157,13 +213,28 @@ def fix_lon(ds: xr.Dataset) -> xr.DataArray:
         "standard_name": "longitude",
         "long_name": "longitude",
     }
-    return da
+    ds["lon"] = da
+    return ds
+
+
+def set_var_attrs(
+    ds: xr.Dataset, var: str, units: str, standard_name: str, long_name: str
+) -> xr.Dataset:
+    """
+    Ensure the xarray dataset's variable attributes are formatted according to CF-Conventions.
+    """
+    assert var in ds
+    da = ds[var]
+    da.attrs = {"units": units, "standard_name": standard_name, "long_name": long_name}
+    ds[var] = da
+    return ds
 
 
 def gen_utc_timestamp(time: float | None = None) -> str:
     if time is None:
         time = datetime.datetime.now(datetime.UTC)
     else:
+        time = datetime.datetime.utcfromtimestamp(time)
         time = datetime.datetime.utcfromtimestamp(time)
     return time.strftime("%Y-%m-%dT%H:%M:%SZ")
 

@@ -5,7 +5,7 @@ import numpy as np
 import xarray as xr
 
 from ilamb3_data import (
-    download_file,
+    download_from_html,
     gen_utc_timestamp,
 )
 
@@ -56,7 +56,7 @@ for vname, remote_sources in remote_source_dict.items():
         local_source_dict[vname].append(source)
         source.parent.mkdir(parents=True, exist_ok=True)
         if not source.is_file():
-            download_file(remote_source, str(source))
+            download_from_html(remote_source, str(source))
         download_stamp = gen_utc_timestamp(source.stat().st_mtime)
 generate_stamp = gen_utc_timestamp()
 

@@ -218,7 +218,7 @@ def add_time_bounds_monthly(ds: xr.Dataset) -> xr.Dataset:
 
     bounds_array = np.array([lower_bounds, upper_bounds]).T
     ds = ds.assign_coords(time_bounds=(("time", "bounds"), bounds_array))
-    ds["time_bounds"].attrs["long_name"] = "time_bounds"
+    #ds["time_bounds"].attrs["long_name"] = "time_bounds"
     ds["time"].attrs["bounds"] = "time_bounds"
 
     return ds
@@ -295,6 +295,7 @@ def set_ods_global_attributes(
     ds: xr.Dataset,
     *,
     activity_id="obs4MIPs",
+    aux_variable_id: Optional[str] = None,
     comment: Optional[str] = None,
     contact: str,
     Conventions="CF-1.12 ODS-2.5",
@@ -306,6 +307,7 @@ def set_ods_global_attributes(
     frequency: str,
     grid: str,
     grid_label: str,
+    has_auxdata: bool,
     history: str,
     institution: str,
     institution_id: str,
@@ -377,6 +379,10 @@ def set_ods_global_attributes(
                 table_name = table.split('_')[-1].split('.')[0]
 
     errors = []
+    if has_auxdata:
+        if aux_variable_id=="None":
+            errors.append(f"must specify ancillary variable_ids if included")
+    
     # Check vals dependent on "valid_" lists hard-coded above
     if grid_label not in get_nested_dict(grid_labels_cv, ["grid_label","grid_label"]):
         errors.append(f"grid_label must match a key in obs4MIPs_grid_label.json")
@@ -431,6 +437,7 @@ def set_ods_global_attributes(
 
     attrs = {
         "activity_id": activity_id,
+        #"aux_variable_id": aux_variable_id,
         #"comment": comment,
         "contact": contact,
         "Conventions": "CF-1.12 ODS-2.5",
@@ -442,6 +449,7 @@ def set_ods_global_attributes(
         "frequency": frequency,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_frequency.json
         "grid": grid,
         "grid_label": grid_label,  # ["gn", "gr1"]
+        "has_auxdata":has_auxdata,
         "history": history,
         "institution": institution,
         "institution_id": institution_id,  # have to be registered on https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_institution_id.json
@@ -544,7 +552,6 @@ def set_ods_coords(
                 coord = bound.split('_')[0]
                 ds[coord].attrs.update({'bounds':rbound})
     coord_table = load_json_from_url(base_url + 'Tables/obs4MIPs_coordinate.json')['axis_entry']
-    
     
     def find_coord_key(nested_json, coord):
         if isinstance(nested_json, dict):

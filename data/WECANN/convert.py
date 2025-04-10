@@ -40,7 +40,7 @@ coords = {}
 
 # Time is encoded as a 2D character array [["2022/01",...]]
 coords["time"] = [
-    cf.DatetimeNoLeap(int("".join(t[:4])), int("".join(t[-2:])), 15)
+    cf.DatetimeGregorian(int("".join(t[:4])), int("".join(t[-2:])), 15)
     for t in ds["Time"].astype(str).values.T
 ]
 
@@ -65,7 +65,7 @@ for var, da in data.items():
 out = xr.Dataset(data_vars=data, coords=coords)
 
 # Fix up the dimensions
-out = set_ods_calendar(out)
+#out = set_ods_calendar(out)
 out["time"] = fix_time(out)
 out["lat"] = fix_lat(out)
 out["lon"] = fix_lon(out)
@@ -87,6 +87,7 @@ attrs = {
     "frequency": "mon",
     "grid": "1x1 degree",
     "grid_label": "gn",
+    "has_auxdata":"False",
     "history": """
 %s: downloaded %s;
 %s: converted to obs4MIP format"""
@@ -111,11 +112,10 @@ attrs = {
     "source_label":"WECANN",
     "source_type": "satellite_retrieval",
     "source_version_number": "1",
-    "variant_label":"ILAMB_REF",
+    "variant_label":"BE",
     "variant_info":"CMORized product prepared by ILAMB and CMIP IPO",
     "title": "Water, Energy, and Carbon with Artificial Neural Networks (WECANN)",
     "tracking_id": generate_trackingid,
-    "variant_label": "ILAMB-REF",
 }
 
 # Write out files

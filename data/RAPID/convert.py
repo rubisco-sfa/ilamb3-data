@@ -24,6 +24,7 @@ ds["time"] = [
 ds = add_time_bounds_monthly(ds)
 ds = ds.assign_coords({"time_bounds": ds["time_bounds"]})
 ds["time"] = fix_time(ds)
+ds["time"].attrs["bounds"] = "time_bounds"
 ds = ds.drop_vars([v for v in ds.data_vars if v != "moc_mar_hc10"]).rename_vars(
     {"moc_mar_hc10": "amoc"}
 )

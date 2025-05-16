@@ -5,7 +5,7 @@ import cftime
 import numpy as np
 import xarray as xr
 
-from ilamb3_data import download_file, fix_time, gen_utc_timestamp
+from ilamb3_data import download_from_html, gen_utc_timestamp, set_time_attrs
 
 # Download source
 remote_source = "https://www.ncei.noaa.gov/data/oceans/woa/DATA_ANALYSIS/3M_HEAT_CONTENT/NETCDF/heat_content/heat_content_anomaly_0-2000_yearly.nc"
@@ -13,7 +13,7 @@ local_source = Path("_raw")
 local_source.mkdir(parents=True, exist_ok=True)
 local_source = local_source / Path(remote_source).name
 if not local_source.is_file():
-    download_file(remote_source, str(local_source))
+    download_from_html(remote_source, str(local_source))
 download_stamp = gen_utc_timestamp(local_source.stat().st_mtime)
 generate_stamp = gen_utc_timestamp()
 
@@ -34,12 +34,7 @@ ds["time_bnds"] = (
 )
 
 # Drop things we don't need
-ds = ds.drop_vars(
-    [
-        "crs",
-        "h18_hc",
-    ]
-)
+ds = ds.drop_vars(["crs", "h18_hc", "basin_mask", "climatology_bounds", "depth_bnds"])
 vs = [v for v in ds if v.startswith("yearl") and "_se_" not in v]
 ds["ohc"] = xr.concat(
     [ds[v].assign_coords(region=v.split("_")[-1]) for v in vs], dim="region"
@@ -50,6 +45,7 @@ ds["ohc_uncert"] = xr.concat(
     [ds[v].assign_coords(region=v.split("_")[-1]) for v in vs], dim="region"
 )
 ds = ds.drop_vars(vs)
+ds = ds.sel(region="WO", drop=True)
 ds["ohc"].attrs = {
     "standard_name": "ocean_heat_content_anomaly",
     "long_time": "ocean_heat_content_anomaly_from_2005_to_2000m",
@@ -63,7 +59,9 @@ ds["ohc_uncert"].attrs = {
 }
 
 # Fix up the dimensions
-ds["time"] = fix_time(ds)
+ds = set_time_attrs(ds)
+ds["time"].attrs["bounds"] = "time_bnds"
+ds["time_bnds"].attrs["long_name"] = "time_bounds"
 time_range = f"{ds["time"].min().dt.year:d}{ds["time"].min().dt.month:02d}"
 time_range += f"-{ds["time"].max().dt.year:d}{ds["time"].max().dt.month:02d}"
 

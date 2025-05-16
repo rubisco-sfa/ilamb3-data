@@ -240,9 +240,11 @@ class ILAMBDataset(BaseModel):
         ]
 
         # Ensure there is only one latitude dimension
-        if len(lat_names_found) != 1:
+        if not lat_names_found:
+            return ds
+        if len(lat_names_found) > 1:
             raise ValueError(
-                f"Dataset has {len(lat_names_found)} latitude dimensions, expected exactly one. Found: {lat_names_found}"
+                f"Dataset has {len(lat_names_found)} latitude dimensions, expected one or None. Found: {lat_names_found}"
             )
 
         lat_name = lat_names_found[0]
@@ -299,9 +301,11 @@ class ILAMBDataset(BaseModel):
         ]
 
         # Ensure there is only one longitude dimension
-        if len(lon_names_found) != 1:
+        if not lon_names_found:
+            return ds
+        if len(lon_names_found) > 1:
             raise ValueError(
-                f"Dataset has {len(lon_names_found)} longitude dimensions, expected exactly one. Found: {lon_names_found}"
+                f"Dataset has {len(lon_names_found)} longitude dimensions, expected one or None. Found: {lon_names_found}"
             )
 
         lon_name = lon_names_found[0]

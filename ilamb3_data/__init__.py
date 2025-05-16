@@ -234,8 +234,7 @@ def gen_utc_timestamp(time: float | None = None) -> str:
     if time is None:
         time = datetime.datetime.now(datetime.UTC)
     else:
-        time = datetime.datetime.utcfromtimestamp(time)
-        time = datetime.datetime.utcfromtimestamp(time)
+        time = datetime.datetime.fromtimestamp(time)
     return time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 

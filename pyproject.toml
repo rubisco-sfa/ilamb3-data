@@ -17,6 +17,7 @@ dependencies = [
     "intake-esgf>=2024.12.7",
     "cf-xarray>=0.10.4",
     "cftime>=1.6.4.post1",
+    "nc-time-axis>=1.4.1",
 ]
 
 [build-system]

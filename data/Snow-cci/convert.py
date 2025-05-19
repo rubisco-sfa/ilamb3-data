@@ -6,7 +6,7 @@ import numpy as np
 import xarray as xr
 from ilamb3.dataset import coarsen_dataset
 
-from ilamb3_data import gen_utc_timestamp, set_lat_attrs, set_lon_attrs, set_time_attrs
+from ilamb3_data import gen_utc_timestamp, set_lat_attrs, set_lon_attrs
 
 PURGE = True
 remote_source = "https://catalogue.ceda.ac.uk/uuid/f4654030223445b0bac63a23aaa60620/"
@@ -66,15 +66,17 @@ for year in range(1982, 2020):
         if year == 2019 and month > 6:
             continue
         download_average_and_coarsen(year, month, remove_source=PURGE)
-out = xr.open_mfdataset("_raw/*.nc")
+
+out = xr.open_mfdataset("_raw/snc*.nc")
 out = out.rename_vars({"scfg": "snc", "scfg_unc": "snc_unc"})
 
 # Fix up the dimensions
-out = set_time_attrs(out)
 out = set_lat_attrs(out)
 out = set_lon_attrs(out)
 out = out.sortby(["time", "lat", "lon"])
 out = out.cf.add_bounds(["lat", "lon"])
+out["time"].attrs["bounds"] = "time_bnds"
+out["time_bnds"].attrs["long_name"] = "time_bounds"
 time_range = f"{out['time'].min().dt.year:d}{out['time'].min().dt.month:02d}"
 time_range += f"-{out['time'].max().dt.year:d}{out['time'].max().dt.month:02d}"
 
@@ -107,7 +109,7 @@ attrs = {
     "institution_id": "ESACCI",
     "license": "CC BY-NC-SA 4.0",
     "nominal_resolution": "0.5x0.5 degree",
-    "processing_code_location": "https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/ESACCI/convert.py",
+    "processing_code_location": "https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/Snow-cci/convert.py",
     "product": "observations",
     "realm": "land",
     "references": "Solberg, R.; Rudjord, Ø.; Salberg, A.-B.; Killie, M.A.; Eastwood, S.; Sørensen, A.; Marin, C.; Premier, V.; Schwaizer, G.; Nagler, T. (2023): ESA Snow Climate Change Initiative (Snow_cci): Fractional Snow Cover in CryoClim, v1.0. NERC EDS Centre for Environmental Data Analysis, 08 August 2023. doi:10.5285/f4654030223445b0bac63a23aaa60620.",

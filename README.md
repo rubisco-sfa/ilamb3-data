@@ -79,5 +79,5 @@ This is how I propose adding a dataset would work:
 From the repository head:
 
 ```bash
-rsync -avz --exclude=*.py --exclude=*_raw* data/ USER@climatemodeling.org:html/ilamb3-data/
+rsync -avz --exclude=*.py --exclude=*_raw* --exlude=*dap.ceda.ac.uk* data/ USER@climatemodeling.org:html/ilamb3-data/
 ```

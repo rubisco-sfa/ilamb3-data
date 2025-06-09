@@ -288,7 +288,6 @@ def add_time_bounds_monthly(ds: xr.Dataset) -> xr.Dataset:
 
     bounds_array = np.array([lower_bounds, upper_bounds]).T
     ds = ds.assign_coords(time_bounds=(("time", "bounds"), bounds_array))
-    # ds["time_bounds"].attrs["long_name"] = "time_bounds"
     ds["time"].attrs["bounds"] = "time_bounds"
 
     return ds
@@ -364,7 +363,6 @@ def get_nested_dict(data, path, default=None):
     return data
 
 
-# FUNCTION IS UNDER CONSTRUCTION
 def set_ods_global_attributes(
     ds: xr.Dataset,
     *,
@@ -428,8 +426,6 @@ def set_ods_global_attributes(
         ValueError: If any required attribute is missing or not valid.
     """
 
-    # valid_grid_labels = ["gn", "gr1"]
-    # valid_products = ["observations", "reanalysis", "in_situ", "exploratory_product"]
     valid_external_variables = ["areacella", "areacello", "volcella", "volcello"]
 
     base_url = "https://raw.githubusercontent.com/PCMDI/obs4MIPs-cmor-tables/master/"
@@ -501,10 +497,6 @@ def set_ods_global_attributes(
         errors.append(
             "source_label must match the label inside obs4MIPs_source_id.json[source_id]"
         )
-    # if source != get_nested_dict(source_id_cv, ["source_id",source_id, "source"]):
-    #    errors.append(
-    #        "source must match the label inside obs4MIPs_source_id.json[source_id]"
-    #    )
     if source_version_number not in get_nested_dict(
         source_id_cv, ["source_id", source_id, "source_version_number"]
     ):
@@ -529,15 +521,12 @@ def set_ods_global_attributes(
 
     attrs = {
         "activity_id": activity_id,
-        # "aux_variable_id": aux_variable_id,
-        # "comment": comment,
         "contact": contact,
         "Conventions": "CF-1.12 ODS-2.5",
         "creation_date": creation_date,
         "dataset_contributor": dataset_contributor,
         "data_specs_version": data_specs_version,
         "doi": doi,
-        # "external_variables": external_variables,  # [“areacella”, “areacello”, “volcella”, “volcello”]
         "frequency": frequency,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_frequency.json
         "grid": grid,
         "grid_label": grid_label,  # ["gn", "gr1"]
@@ -554,7 +543,6 @@ def set_ods_global_attributes(
         "region": region,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_region.json
         "source": source,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/Tables/obs4MIPs_CV.json (search source_id)
         "source_id": source_id,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_id.json
-        # "source_data_notes": source_data_notes,
         "source_data_retrieval_date": source_data_retrieval_date,
         "source_data_url": source_data_url,
         "source_label": source_label,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_id.json (nested source_label)
@@ -653,7 +641,7 @@ def set_ods_coords(ds: xr.Dataset) -> xr.Dataset:
     for bound, rbound in zip(possible_bounds, replaced_bounds):
         if bound in ds:
             ds = ds.rename({bound: rbound})
-            if "_" in bound:  # and bound != "time_bounds":
+            if "_" in bound:
                 coord = bound.split("_")[0]
                 ds[coord].attrs.update({"bounds": rbound})
     coord_table = load_json_from_url(base_url + "Tables/obs4MIPs_coordinate.json")[

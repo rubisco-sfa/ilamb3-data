@@ -3,12 +3,18 @@ from pathlib import Path
 import cf_xarray  # noqa
 import cftime as cf
 import xarray as xr
+import numpy as np
 
 from ilamb3_data import (
     add_time_bounds_monthly,
     download_from_html,
     gen_utc_timestamp,
     get_cmip6_variable_info,
+    set_ods_global_attributes,
+    gen_trackingid,
+    set_ods_var_attrs,
+    set_ods_coords,
+    set_ods_calendar,
     set_lat_attrs,
     set_lon_attrs,
     set_time_attrs,
@@ -26,6 +32,7 @@ if not local_source.is_file():
     download_from_html(remote_source, str(local_source))
 download_stamp = gen_utc_timestamp(local_source.stat().st_mtime)
 generate_stamp = gen_utc_timestamp()
+generate_trackingid = gen_trackingid()
 
 # Build up a new dataset
 ds = xr.open_dataset(local_source)
@@ -33,7 +40,7 @@ coords = {}
 
 # Time is encoded as a 2D character array [["2022/01",...]]
 coords["time"] = [
-    cf.DatetimeNoLeap(int("".join(t[:4])), int("".join(t[-2:])), 15)
+    cf.DatetimeGregorian(int("".join(t[:4])), int("".join(t[-2:])), 15)
     for t in ds["Time"].astype(str).values.T
 ]
 
@@ -66,19 +73,20 @@ out = out.cf.add_bounds(["lat", "lon"])
 out = add_time_bounds_monthly(out)
 time_range = f"{out['time'].min().dt.year:d}{out['time'].min().dt.month:02d}"
 time_range += f"-{out['time'].max().dt.year:d}{out['time'].max().dt.month:02d}"
-
 # Populate attributes
 attrs = {
     "activity_id": "obs4MIPs",
-    "contact": "S. Hamed Alemohammad (sha2128@columbia.edu) and Pierre Gentine (pg2328@columbia.edu)",
+    "contact": "HAlemohammad@clarku.edu",
     "Conventions": "CF-1.12 ODS-2.5",
-    "creation_data": generate_stamp,
+    "creation_date": generate_stamp,
     "dataset_contributor": "Nathan Collier",
-    "data_specs_version": "2.5",
+    "data_specs_version": "ODS2.5",
     "doi": "N/A",
+    #"external_variables": None,
     "frequency": "mon",
     "grid": "1x1 degree",
     "grid_label": "gn",
+    "has_auxdata":"False",
     "history": """
 %s: downloaded %s;
 %s: converted to obs4MIP format"""
@@ -88,32 +96,25 @@ attrs = {
         generate_stamp,
     ),
     "institution": "Columbia University",
-    "institution_id": "Columbia",
-    "license": "No Commercial Use",
+    "institution_id": "ColumbiaU",
+    "license": "Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
     "nominal_resolution": "1x1 degree",
     "processing_code_location": "https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/WECANN/convert.py",
-    "product": "observations",
+    "product": "derived",
     "realm": "land",
-    "references": """
-@ARTICLE{Alemohammad2017,
-  author = {Alemohammad, S. H. and Fang, B. and Konings, A. G. and Aires, F. and Green, J. K. and Kolassa, J. and Miralles, D. and Prigent, C. and Gentine, P.},
-  title= {Water, Energy, and Carbon with Artificial Neural Networks (WECANN): a statistically based estimate of global surface turbulent fluxes and gross primary productivity using solar-induced fluorescence},
-  journal = {Biogeosciences},
-  volume = {14},
-  year = {2017},
-  number = {18},
-  page = {4101--4124},
-  doi = {https://doi.org/10.5194/bg-14-4101-2017}
-}""",
+    "references": "Alemohammad, S. H., Fang, B., Konings, A. G., Aires, F., Green, J. K., Kolassa, J., Miralles, D., Prigent, C., and Gentine, P.: Water, Energy, and Carbon with Artificial Neural Networks (WECANN): a statistically based estimate of global surface turbulent fluxes and gross primary productivity using solar-induced fluorescence, Biogeosciences, 14, 4101–4124, https://doi.org/10.5194/bg-14-4101-2017, 2017.",
     "region": "global_land",
-    "source": "Solar Induced Fluorescence (SIF), Air Temperature, Precipitation, Net Radiation, Soil Moisture, and Snow Water Equivalent",
-    "source_id": "WECANN",
+    "source": "WECANN 1.0 (2018): Water, Energy, and Carbon with Artificial Neural Networks",
+    "source_id": "WECANN-1-0",
     "source_data_retrieval_date": download_stamp,
     "source_data_url": remote_source,
-    "source_type": "statistical-estimates",
+    "source_label":"WECANN",
+    "source_type": "satellite_retrieval",
     "source_version_number": "1",
+    "variant_label":"BE",
+    "variant_info":"CMORized product prepared by ILAMB and CMIP IPO",
     "title": "Water, Energy, and Carbon with Artificial Neural Networks (WECANN)",
-    "variant_label": "BE",
+    "tracking_id": generate_trackingid,
 }
 
 # Write out files
@@ -121,9 +122,19 @@ for var, da in out.items():
     dsv = da.to_dataset()
     dsv = out.drop_vars(set(out) - set([var]))
     dsv.attrs = attrs | {"variable_id": var}
+    dsv = set_ods_global_attributes(dsv, **dsv.attrs)
+    dsv = set_ods_var_attrs(dsv, var)
+    dsv[var] = dsv[var].astype(np.float32)
+    dsv = set_ods_coords(dsv)
     dsv.to_netcdf(
         "{variable_id}_{frequency}_{source_id}_{variant_label}_{grid_label}_{time_mark}.nc".format(
             **dsv.attrs, time_mark=time_range
         ),
-        encoding={var: {"zlib": True}},
+        encoding={'lat': {'zlib': False, '_FillValue': None},
+                  'lon': {'zlib': False, '_FillValue': None},
+                  'lat_bnds': {'zlib': False, '_FillValue': None, 'chunksizes': (180, 2)},
+                  'lon_bnds': {'zlib': False, '_FillValue': None, 'chunksizes': (360, 2)},
+                  var: {'zlib': True,
+                        '_FillValue': np.float32(1.0E20),
+                        'chunksizes': (1, 180, 360)}},
     )

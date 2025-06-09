@@ -67,6 +67,22 @@ wheels = [
 ]
 
 [[package]]
+name = "cf-units"
+version = "3.3.0"
+source = { registry = "https://pypi.org/simple" }
+dependencies = [
+    { name = "cftime" },
+    { name = "jinja2" },
+    { name = "numpy" },
+]
+sdist = { url = "https://files.pythonhosted.org/packages/b6/d9/3e4014a228c23a4e10d106eead518d1708f9985f80e5bd3aa66d8268bf22/cf_units-3.3.0.tar.gz", hash = "sha256:2327da492f30cf018a3f1b5950192ce9bb3332e50b1c7ac53f7543de7fa61fdb", size = 319987 }
+wheels = [
+    { url = "https://files.pythonhosted.org/packages/f6/59/315cf44dd240cf97d364fe7eb7587df35c7f9ed9da83a9ae85cd49121a1f/cf_units-3.3.0-cp313-cp313-macosx_13_0_x86_64.whl", hash = "sha256:67d15944ef079940affaf4c92d14d83554fd0c43af4ae99607137beb43276c71", size = 458570 },
+    { url = "https://files.pythonhosted.org/packages/79/88/0f0e555be1ca5eb8ed1f2fed932cc703e24ee0c7cc4198866c6d592a2509/cf_units-3.3.0-cp313-cp313-macosx_14_0_arm64.whl", hash = "sha256:e63f2dd523658941a6da0490349a831d926ab49ec90278a8759979063dd3acf7", size = 450495 },
+    { url = "https://files.pythonhosted.org/packages/48/87/e4a2158ad7756892bf2addb4b70783dc67907dde1632cd50120895afda3f/cf_units-3.3.0-cp313-cp313-manylinux_2_17_x86_64.manylinux2014_x86_64.whl", hash = "sha256:8e26ac5412c828edb33ae510470c74213e1bd2280559e078b779799c44d33349", size = 735070 },
+]
+
+[[package]]
 name = "cf-xarray"
 version = "0.10.4"
 source = { registry = "https://pypi.org/simple" }
@@ -421,6 +437,7 @@ name = "ilamb3-data"
 version = "0.1.0"
 source = { editable = "." }
 dependencies = [
+    { name = "cf-units" },
     { name = "cf-xarray" },
     { name = "cftime" },
     { name = "dask" },
@@ -439,6 +456,7 @@ dependencies = [
 
 [package.metadata]
 requires-dist = [
+    { name = "cf-units", specifier = ">=3.3.0" },
     { name = "cf-xarray", specifier = ">=0.10.4" },
     { name = "cftime", specifier = ">=1.6.4.post1" },
     { name = "dask", specifier = ">=2025.2.0" },

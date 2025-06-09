@@ -220,15 +220,6 @@ class ILAMBDataset(BaseModel):
                 "The second dimension should have length 2 to represent time bounds."
             )
 
-        # Check for the correct 'long_name' attribute for time_bounds
-        if (
-            "long_name" not in time_bounds.attrs
-            or time_bounds.attrs["long_name"] != "time_bounds"
-        ):
-            raise ValueError(
-                f"Time bounds '{time_bounds_name}' is missing its 'long_name':'time_bounds' attribute."
-            )
-
         return ds
 
     @field_validator("ds")

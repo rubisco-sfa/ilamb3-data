@@ -2,21 +2,20 @@ from pathlib import Path
 
 import cf_xarray  # noqa
 import cftime as cf
-import xarray as xr
 import numpy as np
+import xarray as xr
 
 from ilamb3_data import (
     add_time_bounds_monthly,
     download_from_html,
+    gen_trackingid,
     gen_utc_timestamp,
     get_cmip6_variable_info,
-    set_ods_global_attributes,
-    gen_trackingid,
-    set_ods_var_attrs,
-    set_ods_coords,
-    set_ods_calendar,
     set_lat_attrs,
     set_lon_attrs,
+    set_ods_coords,
+    set_ods_global_attributes,
+    set_ods_var_attrs,
     set_time_attrs,
 )
 
@@ -82,11 +81,10 @@ attrs = {
     "dataset_contributor": "Nathan Collier",
     "data_specs_version": "ODS2.5",
     "doi": "N/A",
-    #"external_variables": None,
     "frequency": "mon",
     "grid": "1x1 degree",
     "grid_label": "gn",
-    "has_auxdata":"False",
+    "has_auxdata": "False",
     "history": """
 %s: downloaded %s;
 %s: converted to obs4MIP format"""
@@ -108,11 +106,11 @@ attrs = {
     "source_id": "WECANN-1-0",
     "source_data_retrieval_date": download_stamp,
     "source_data_url": remote_source,
-    "source_label":"WECANN",
+    "source_label": "WECANN",
     "source_type": "satellite_retrieval",
     "source_version_number": "1",
-    "variant_label":"BE",
-    "variant_info":"CMORized product prepared by ILAMB and CMIP IPO",
+    "variant_label": "BE",
+    "variant_info": "CMORized product prepared by ILAMB and CMIP IPO",
     "title": "Water, Energy, and Carbon with Artificial Neural Networks (WECANN)",
     "tracking_id": generate_trackingid,
 }
@@ -130,11 +128,15 @@ for var, da in out.items():
         "{variable_id}_{frequency}_{source_id}_{variant_label}_{grid_label}_{time_mark}.nc".format(
             **dsv.attrs, time_mark=time_range
         ),
-        encoding={'lat': {'zlib': False, '_FillValue': None},
-                  'lon': {'zlib': False, '_FillValue': None},
-                  'lat_bnds': {'zlib': False, '_FillValue': None, 'chunksizes': (180, 2)},
-                  'lon_bnds': {'zlib': False, '_FillValue': None, 'chunksizes': (360, 2)},
-                  var: {'zlib': True,
-                        '_FillValue': np.float32(1.0E20),
-                        'chunksizes': (1, 180, 360)}},
+        encoding={
+            "lat": {"zlib": False, "_FillValue": None},
+            "lon": {"zlib": False, "_FillValue": None},
+            "lat_bnds": {"zlib": False, "_FillValue": None, "chunksizes": (180, 2)},
+            "lon_bnds": {"zlib": False, "_FillValue": None, "chunksizes": (360, 2)},
+            var: {
+                "zlib": True,
+                "_FillValue": np.float32(1.0e20),
+                "chunksizes": (1, 180, 360),
+            },
+        },
     )

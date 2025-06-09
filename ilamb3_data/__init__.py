@@ -2,6 +2,7 @@ import datetime
 import json
 import os
 import urllib.request
+import uuid
 from typing import Optional
 
 import cftime as cf
@@ -9,10 +10,9 @@ import numpy as np
 import pooch
 import requests
 import xarray as xr
+from cf_units import Unit
 from intake_esgf import ESGFCatalog
 from tqdm import tqdm
-import uuid
-from cfunits import Units
 
 
 def create_registry(registry_file: str) -> pooch.Pooch:
@@ -288,10 +288,10 @@ def add_time_bounds_monthly(ds: xr.Dataset) -> xr.Dataset:
 
     bounds_array = np.array([lower_bounds, upper_bounds]).T
     ds = ds.assign_coords(time_bounds=(("time", "bounds"), bounds_array))
-    #ds["time_bounds"].attrs["long_name"] = "time_bounds"
     ds["time"].attrs["bounds"] = "time_bounds"
 
     return ds
+
 
 def set_cf_global_attributes(
     ds: xr.Dataset,
@@ -343,24 +343,26 @@ def set_cf_global_attributes(
     ds.attrs.update(attrs)
     return ds
 
+
 def load_json_from_url(url):
     with urllib.request.urlopen(url) as response:
         return json.load(response)
-            
+
+
 def get_nested_dict(data, path, default=None):
     for key in path:
         try:
             if isinstance(data, dict):
-                    data = data.get(key, default)
+                data = data.get(key, default)
             elif isinstance(data, list) and isinstance(key, int):
-                    data = data[key]
+                data = data[key]
             else:
                 return default
         except (IndexError, TypeError):
             return default
     return data
 
-# FUNCTION IS UNDER CONSTRUCTION
+
 def set_ods_global_attributes(
     ds: xr.Dataset,
     *,
@@ -424,8 +426,6 @@ def set_ods_global_attributes(
         ValueError: If any required attribute is missing or not valid.
     """
 
-    #valid_grid_labels = ["gn", "gr1"]
-    #valid_products = ["observations", "reanalysis", "in_situ", "exploratory_product"]
     valid_external_variables = ["areacella", "areacello", "volcella", "volcello"]
 
     base_url = "https://raw.githubusercontent.com/PCMDI/obs4MIPs-cmor-tables/master/"
@@ -441,59 +441,73 @@ def set_ods_global_attributes(
     grid_labels_cv = load_json_from_url(base_url + "obs4MIPs_grid_label.json")
     products_cv = load_json_from_url(base_url + "obs4MIPs_product.json")
     if frequency == "mon":
-        mip_tables = ['Tables/obs4MIPs_Lmon.json', 'Tables/obs4MIPs_Omon.json', 'Tables/obs4MIPs_Amon.json']
+        mip_tables = [
+            "Tables/obs4MIPs_Lmon.json",
+            "Tables/obs4MIPs_Omon.json",
+            "Tables/obs4MIPs_Amon.json",
+        ]
         for table in mip_tables:
-            if variable_id in get_nested_dict(load_json_from_url(base_url + table) , ["variable_entry"]):
-                realm = get_nested_dict(load_json_from_url(base_url + table) , ["Header"])['realm']
+            if variable_id in get_nested_dict(
+                load_json_from_url(base_url + table), ["variable_entry"]
+            ):
+                realm = get_nested_dict(
+                    load_json_from_url(base_url + table), ["Header"]
+                )["realm"]
                 variable_cv = load_json_from_url(base_url + table)
-                table_name = table.split('_')[-1].split('.')[0]
+                table_name = table.split("_")[-1].split(".")[0]
 
     errors = []
     if has_auxdata:
-        if aux_variable_id=="None":
-            errors.append(f"must specify ancillary variable_ids if included")
-    
+        if aux_variable_id == "None":
+            errors.append("must specify ancillary variable_ids if included")
+
     # Check vals dependent on "valid_" lists hard-coded above
-    if grid_label not in get_nested_dict(grid_labels_cv, ["grid_label","grid_label"]):
-        errors.append(f"grid_label must match a key in obs4MIPs_grid_label.json")
-    if product not in products_cv['product']:
-        errors.append(f"product must match a key in obs4MIPs_product.json")
+    if grid_label not in get_nested_dict(grid_labels_cv, ["grid_label"]):
+        errors.append("grid_label must match a key in obs4MIPs_grid_label.json")
+    if product not in products_cv["product"]:
+        errors.append("product must match a key in obs4MIPs_product.json")
     if external_variables:
         if external_variables not in valid_external_variables:
-            errors.append(f"external_variables must be one of {valid_external_variables}")
+            errors.append(
+                f"external_variables must be one of {valid_external_variables}"
+            )
     # Check vals present in Github json files
-    if frequency not in get_nested_dict(freq_cv, ["frequency","frequency"]):
+    if frequency not in get_nested_dict(freq_cv, ["frequency"]):
         errors.append("frequency must match a key in obs4MIPs_frequency.json")
-    if institution_id not in institution_cv['institution_id']:
+    if institution_id not in institution_cv["institution_id"]:
         errors.append("institution_id must match a key in obs4MIPs_institution_id.json")
-    if nominal_resolution not in get_nested_dict(nominal_res_cv, ["nominal_resolution","nominal_resolution"]):
+    if nominal_resolution not in get_nested_dict(
+        nominal_res_cv, ["nominal_resolution"]
+    ):
         errors.append(
             "nominal_resolution must match a key in obs4MIPs_nominal_resolution.json"
         )
-    if realm not in realm_cv['realm']:
+    if realm not in realm_cv["realm"]:
         errors.append("realm must match a key in obs4MIPs_realm.json")
-    if region not in region_cv['region']:
+    if region not in region_cv["region"]:
         errors.append("region must match a key in obs4MIPs_region.json")
-    if source_id not in source_id_cv['source_id']:
+    if source_id not in source_id_cv["source_id"]:
         errors.append("source_id must match a key in obs4MIPs_source_id.json")
-    if source_type not in source_type_cv['source_type']:
+    if source_type not in source_type_cv["source_type"]:
         errors.append("source_type must match a key in obs4MIPs_source_type.json")
     # Check vals *nested* within Github json files
-    if source_label != get_nested_dict(source_id_cv, ["source_id",source_id, "source_label"]):
+    if source_label != get_nested_dict(
+        source_id_cv, ["source_id", source_id, "source_label"]
+    ):
         errors.append(
             "source_label must match the label inside obs4MIPs_source_id.json[source_id]"
         )
-    #if source != get_nested_dict(source_id_cv, ["source_id",source_id, "source"]):
-    #    errors.append(
-    #        "source must match the label inside obs4MIPs_source_id.json[source_id]"
-    #    )
-    if source_version_number not in get_nested_dict(source_id_cv, ["source_id",source_id, "source_version_number"]):
+    if source_version_number not in get_nested_dict(
+        source_id_cv, ["source_id", source_id, "source_version_number"]
+    ):
         errors.append("source_version_number must match a value inside source_id entry")
     if source_id not in get_nested_dict(top_level_cv, ["CV", "source_id"]):
         errors.append(
             "source_id must be present in obs4MIPs_CV.json under 'source_id' key"
         )
-    if source not in get_nested_dict(top_level_cv, ["CV", "source_id", source_id, "source"]):
+    if source not in get_nested_dict(
+        top_level_cv, ["CV", "source_id", source_id, "source"]
+    ):
         errors.append(
             "source must match a attribute in the 'source_id' section of obs4MIPs_CV.json"
         )
@@ -507,19 +521,16 @@ def set_ods_global_attributes(
 
     attrs = {
         "activity_id": activity_id,
-        #"aux_variable_id": aux_variable_id,
-        #"comment": comment,
         "contact": contact,
         "Conventions": "CF-1.12 ODS-2.5",
         "creation_date": creation_date,
         "dataset_contributor": dataset_contributor,
         "data_specs_version": data_specs_version,
         "doi": doi,
-        #"external_variables": external_variables,  # [“areacella”, “areacello”, “volcella”, “volcello”]
         "frequency": frequency,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_frequency.json
         "grid": grid,
         "grid_label": grid_label,  # ["gn", "gr1"]
-        "has_auxdata":has_auxdata,
+        "has_auxdata": has_auxdata,
         "history": history,
         "institution": institution,
         "institution_id": institution_id,  # have to be registered on https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_institution_id.json
@@ -532,7 +543,6 @@ def set_ods_global_attributes(
         "region": region,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_region.json
         "source": source,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/Tables/obs4MIPs_CV.json (search source_id)
         "source_id": source_id,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_id.json
-        #"source_data_notes": source_data_notes,
         "source_data_retrieval_date": source_data_retrieval_date,
         "source_data_url": source_data_url,
         "source_label": source_label,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_id.json (nested source_label)
@@ -550,12 +560,11 @@ def set_ods_global_attributes(
         raise ValueError(f"Missing required global attributes: {', '.join(missing)}")
 
     ds.attrs.update(attrs)
-    
+
     return ds
-    
-def set_ods_var_attrs(
-    ds: xr.Dataset,
-    variable_id: str) -> xr.Dataset:
+
+
+def set_ods_var_attrs(ds: xr.Dataset, variable_id: str) -> xr.Dataset:
     """
     Set required NetCDF variable level attributes according to CF-Conventions 1.12 and ODS-2.5.
 
@@ -577,52 +586,68 @@ def set_ods_var_attrs(
         ValueError: If any required attribute is missing or not valid.
     """
     base_url = "https://raw.githubusercontent.com/PCMDI/obs4MIPs-cmor-tables/master/"
-    
-    if ds.attrs['frequency'] == 'mon':
-        if ds.attrs['realm'] == 'atmos':
-            mip_table = 'Tables/obs4MIPs_Amon.json'
-        elif ds.attrs['realm'] == 'land':
-            mip_table = 'Tables/obs4MIPs_Lmon.json'
-        elif ds.attrs['realm'] == 'ocean':
-            mip_table = 'Tables/obs4MIPs_Omon.json'
-        varattrs = get_nested_dict(load_json_from_url(base_url + mip_table), ["variable_entry"])[ds.attrs['variable_id']]
-        if not Units(varattrs['units']).equals(Units(ds[variable_id].attrs['units'])):
-            ds[variable_id].values = Units.conform(
-                          ds[variable_id].values,
-                          Units(ds[variable_id].attrs['units']),
-                          Units(varattrs['units']),
-                          inplace=True
-                          )
-            ds[variable_id].attrs['history'] = f'{gen_utc_timestamp()} altered by ILAMB: Converted units from \'{ds[variable_id].attrs['units']}\' to \'{varattrs['units']}\'.'
-            ds[variable_id].attrs['original_units'] = ds[variable_id].attrs['units']
-            ds[variable_id].attrs['units'] = varattrs['units']
+
+    if ds.attrs["frequency"] == "mon":
+        if ds.attrs["realm"] == "atmos":
+            mip_table = "Tables/obs4MIPs_Amon.json"
+        elif ds.attrs["realm"] == "land":
+            mip_table = "Tables/obs4MIPs_Lmon.json"
+        elif ds.attrs["realm"] == "ocean":
+            mip_table = "Tables/obs4MIPs_Omon.json"
+        varattrs = get_nested_dict(
+            load_json_from_url(base_url + mip_table), ["variable_entry"]
+        )[ds.attrs["variable_id"]]
+        if Unit(varattrs["units"]) != Unit(ds[variable_id].attrs["units"]):
+            ds[variable_id].values = Unit(ds[variable_id].attrs["units"]).convert(
+                ds[variable_id].values,
+                Unit(varattrs["units"]),
+                inplace=True,
+            )
+            ds[variable_id].attrs["history"] = (
+                f'{gen_utc_timestamp()} altered by ILAMB: Converted units from \'{ds[variable_id].attrs['units']}\' to \'{varattrs['units']}\'.'
+            )
+            ds[variable_id].attrs["original_units"] = ds[variable_id].attrs["units"]
+            ds[variable_id].attrs["units"] = varattrs["units"]
         else:
-            ds[variable_id].attrs['units'] = varattrs['units']
-        if varattrs['positive']:
-            ds[variable_id].attrs['positive'] = varattrs['positive']
-        
-        ds[variable_id].attrs.update({key: varattrs[key] for key in ['standard_name', 'long_name', 'comment', 'cell_methods', 'cell_measures']})
-    return ds
-    
-def set_ods_calendar(
-    ds: xr.Dataset) -> xr.Dataset:
-    ds = ds.convert_calendar('gregorian')
+            ds[variable_id].attrs["units"] = varattrs["units"]
+        if varattrs["positive"]:
+            ds[variable_id].attrs["positive"] = varattrs["positive"]
+
+        ds[variable_id].attrs.update(
+            {
+                key: varattrs[key]
+                for key in [
+                    "standard_name",
+                    "long_name",
+                    "comment",
+                    "cell_methods",
+                    "cell_measures",
+                ]
+            }
+        )
     return ds
 
-def set_ods_coords(
-    ds: xr.Dataset) -> xr.Dataset:
+
+def set_ods_calendar(ds: xr.Dataset) -> xr.Dataset:
+    ds = ds.convert_calendar("gregorian")
+    return ds
+
+
+def set_ods_coords(ds: xr.Dataset) -> xr.Dataset:
     base_url = "https://raw.githubusercontent.com/PCMDI/obs4MIPs-cmor-tables/master/"
-    
-    possible_bounds = ['bounds', 'lat_bounds', 'lon_bounds', 'time_bounds']
-    replaced_bounds = ['bnds', 'lat_bnds', 'lon_bnds', 'time_bnds']
-    for bound,rbound in zip(possible_bounds,replaced_bounds):
+
+    possible_bounds = ["bounds", "lat_bounds", "lon_bounds", "time_bounds"]
+    replaced_bounds = ["bnds", "lat_bnds", "lon_bnds", "time_bnds"]
+    for bound, rbound in zip(possible_bounds, replaced_bounds):
         if bound in ds:
             ds = ds.rename({bound: rbound})
-            if "_" in bound:# and bound != "time_bounds":
-                coord = bound.split('_')[0]
-                ds[coord].attrs.update({'bounds':rbound})
-    coord_table = load_json_from_url(base_url + 'Tables/obs4MIPs_coordinate.json')['axis_entry']
-    
+            if "_" in bound:
+                coord = bound.split("_")[0]
+                ds[coord].attrs.update({"bounds": rbound})
+    coord_table = load_json_from_url(base_url + "Tables/obs4MIPs_coordinate.json")[
+        "axis_entry"
+    ]
+
     def find_coord_key(nested_json, coord):
         if isinstance(nested_json, dict):
             for key, value in nested_json.items():
@@ -637,10 +662,14 @@ def set_ods_coords(
                 if result:
                     return result
         return None
-    
+
     for coord in ds.coords:
         key = find_coord_key(coord_table, coord)
-        if key and key!='time':
-           ds[coord].attrs.update({k: coord_table[key][k] for k in ['units','axis','long_name', 'standard_name']})
-    return ds    
-
+        if key and key != "time":
+            ds[coord].attrs.update(
+                {
+                    k: coord_table[key][k]
+                    for k in ["units", "axis", "long_name", "standard_name"]
+                }
+            )
+    return ds

@@ -5,6 +5,7 @@ import urllib.request
 from typing import Optional
 
 import cftime as cf
+from calendar import monthrange
 import numpy as np
 import pooch
 import requests
@@ -13,6 +14,7 @@ from intake_esgf import ESGFCatalog
 from tqdm import tqdm
 import uuid
 from cfunits import Units
+import pandas as pd
 
 
 def create_registry(registry_file: str) -> pooch.Pooch:
@@ -33,6 +35,38 @@ def create_registry(registry_file: str) -> pooch.Pooch:
     )
     registry.load_registry(registry_file)
     return registry
+
+
+def download_from_html(remote_source: str, local_source: str | None = None) -> str:
+    """
+    Download a file from a remote URL to a local path.
+    If the "content-length" header is missing, it falls back to a simple download.
+    """
+    if local_source is None:
+        local_source = os.path.basename(remote_source)
+    if os.path.isfile(local_source):
+        return local_source
+
+    resp = requests.get(remote_source, stream=True)
+    try:
+        total_size = int(resp.headers.get("content-length"))
+    except (TypeError, ValueError):
+        total_size = 0
+
+    with open(local_source, "wb") as fdl:
+        if total_size:
+            with tqdm(
+                total=total_size, unit="B", unit_scale=True, desc=local_source
+            ) as pbar:
+                for chunk in resp.iter_content(chunk_size=1024):
+                    if chunk:
+                        fdl.write(chunk)
+                        pbar.update(len(chunk))
+        else:
+            for chunk in resp.iter_content(chunk_size=1024):
+                if chunk:
+                    fdl.write(chunk)
+    return local_source
 
 
 def download_file(remote_source: str, local_source: str | None = None) -> str:
@@ -103,12 +137,49 @@ def get_cmip6_variable_info(variable_id: str) -> dict[str, str]:
     return df.iloc[0].to_dict()
 
 
+def set_time_attrs(ds: xr.Dataset, ref_date: str = "1979-01-01 00:00:00") -> xr.Dataset:
+    """
+    Ensure the xarray dataset's time attributes are formatted according to CF-Conventions.
+    """
+    assert "time" in ds
+    da = ds["time"]
+
+    # Convert numpy.datetime64 to cftime.DatetimeGregorian if needed
+    if np.issubdtype(da.dtype, np.datetime64):
+        # Use pandas to convert to datetime objects
+        dates = pd.to_datetime(da.values)
+
+        # Create cftime datetime objects
+        cftime_dates = [cf.DatetimeGregorian(date.year, date.month, date.day,
+                                                 date.hour, date.minute, date.second)
+                        for date in dates]
+        # Replace the original time coordinate with cftime dates
+        da = xr.DataArray(cftime_dates, dims="time")
+
+    # Update encoding for CF-compliant time representation
+    da.encoding = {
+        "units": f"days since {ref_date} 00:00:00",
+        "calendar": "gregorian",
+        "dtype": "float64"
+    }
+    da.attrs = {
+        "axis": "T",
+        "standard_name": "time",
+        "long_name": "time",
+    }
+
+    # Update the dataset with the corrected time DataArray
+    ds["time"] = da
+    return ds
+    
+
 def fix_time(ds: xr.Dataset) -> xr.DataArray:
     """
     Ensure the xarray dataset's time attributes are formatted according to CF-Conventions.
     """
     assert "time" in ds
     da = ds["time"]
+
     # Ensure time is an accepted xarray time dtype
     if np.issubdtype(da.dtype, np.datetime64):
         ref_date = np.datetime_as_string(da.min().values, unit="s")
@@ -118,9 +189,10 @@ def fix_time(ds: xr.Dataset) -> xr.DataArray:
         raise TypeError(
             f"Unsupported xarray time format: {type(da.values[0])}. Accepted types are np.datetime64 or cftime.datetime."
         )
+
     da.encoding = {
         "units": f"days since {ref_date}",
-        "calendar": da.dt.calendar,
+        "calendar": da.encoding.get("calendar"),
     }
     da.attrs = {
         "axis": "T",
@@ -172,54 +244,116 @@ def gen_trackingid() -> str:
     return "hdl:21.14102/" + str(uuid.uuid4())
 
 
+def add_time_bounds2(ds: xr.Dataset) -> xr.Dataset:
+    """
+    Adds a time_bounds variable to the xarray dataset according to CF conventions.
+    Assumes time intervals are consecutive.
+    """
+    # Temporarily convert cftime to numpy datetime64 for bounds calculation
+    if isinstance(ds["time"].values[0], cf.DatetimeGregorian):
+        times = [np.datetime64(t.strftime("%Y-%m-%dT%H:%M:%S")) for t in ds["time"].values]
+        ds = ds.assign_coords(time=("time", times))
+    
+    time = ds["time"]
+    encoding = time.encoding
+
+    # Generate time bounds
+    bounds = np.empty((len(time), 2), dtype='datetime64[ns]')
+    for i, t in enumerate(pd.to_datetime(time.values)):
+        # Start of the month
+        start = t.replace(day=1)
+        # End of the month (last day)
+        end = (start + pd.DateOffset(months=1) - pd.DateOffset(days=1)).normalize()
+        
+        bounds[i, 0] = np.datetime64(start)
+        bounds[i, 1] = np.datetime64(end)
+
+    # Create the bounds DataArray with the same encoding as time
+    time_bounds = xr.DataArray(
+        bounds,
+        dims=["time", "bounds"],
+        
+    )
+    time_bounds.encoding.update(encoding)
+    # Attach the bounds to the dataset
+    ds["time_bnds"] = time_bounds
+    ds.time.attrs["bounds"] = "time_bnds"
+
+    return ds
+
+
+def add_time_bounds(ds: xr.Dataset) -> xr.Dataset:
+    """
+    Add bounds to the time coordinate using numpy.datetime64 format.
+    """
+    # Temporarily convert cftime to numpy datetime64 for bounds calculation
+    if isinstance(ds["time"].values[0], cf.DatetimeGregorian):
+        times = [np.datetime64(t.strftime("%Y-%m-%dT%H:%M:%S")) for t in ds["time"].values]
+        ds = ds.assign_coords(time=("time", times))
+
+    # Add bounds using cf_xarray
+    ds = ds.cf.add_bounds("time")
+    return ds
+
+
 def add_time_bounds_monthly(ds: xr.Dataset) -> xr.Dataset:
     """
-    Add monthly time bounds to an xarray Dataset.
+    Add CF-compliant monthly time bounds and preserve existing mid-month time values.
 
-    For each timestamp in the dataset's 'time' coordinate, this function adds a new
-    coordinate called 'time_bounds' with the first day of the month and the first
-    day of the next month. These bounds follow CF conventions.
-
-    Args:
-        ds (xr.Dataset): Dataset with a 'time' coordinate of monthly timestamps.
+    Parameters:
+        ds: xarray.Dataset with a 'time' coordinate of monthly midpoints.
 
     Returns:
-        xr.Dataset: Modified dataset with a 'time_bounds' coordinate and updated
-                    attributes on the 'time' coordinate.
+        Dataset with 'time_bnds' for start/end of each month and unchanged 'time'.
     """
+    time_units = ds["time"].attrs.get("units", "days since 2000-01-01")
+    calendar = ds["time"].attrs.get("calendar", "standard")
 
-    def _ymd_tuple(da: xr.DataArray) -> tuple[int, int, int]:
-        """Extract (year, month, day) from a single-element datetime DataArray."""
-        if da.size != 1:
-            raise ValueError("Expected a single-element datetime for conversion.")
-        return int(da.dt.year), int(da.dt.month), int(da.dt.day)
-
-    def _make_timestamp(t: xr.DataArray, ymd: tuple[int, int, int]) -> np.datetime64:
-        """Construct a timestamp matching the type of the input time value."""
-        try:
-            return type(t.item())(*ymd)  # try using the same class as the input
-        except Exception:
-            # fallback to datetime64 if direct construction fails
-            return np.datetime64(f"{ymd[0]:04d}-{ymd[1]:02d}-{ymd[2]:02d}")
+    # Convert time values to cftime objects if needed
+    times = ds["time"].values
+    if not isinstance(times[0], cf.DatetimeNoLeap):
+        if np.issubdtype(times.dtype, np.number):
+             times = xr.coding.times.decode_cf_datetime(times, units=time_units, calendar=calendar)
 
     lower_bounds = []
     upper_bounds = []
 
-    for t in ds["time"]:
-        year, month, _ = _ymd_tuple(t)
-        lower_bounds.append(_make_timestamp(t, (year, month, 1)))
-
-        # First day of the next month (verbose-ified for easier readability)
-        if month == 12:
-            next_month = (year + 1, 1, 1)
+    for t in times:
+        # Get current month start
+        month_start = cf.DatetimeGregorian(t.year, t.month, 1)
+        # Next month start
+        if t.month == 12:
+            next_month = cf.DatetimeGregorian(t.year + 1, 1, 1)
         else:
-            next_month = (year, month + 1, 1)
-        upper_bounds.append(_make_timestamp(t, next_month))
+            next_month = cf.DatetimeGregorian(t.year, t.month + 1, 1)
 
-    bounds_array = np.array([lower_bounds, upper_bounds]).T
-    ds = ds.assign_coords(time_bounds=(("time", "bounds"), bounds_array))
-    #ds["time_bounds"].attrs["long_name"] = "time_bounds"
-    ds["time"].attrs["bounds"] = "time_bounds"
+        lower_bounds.append(month_start)
+        upper_bounds.append(next_month)
+
+    bounds_array = list(zip(lower_bounds, upper_bounds))
+    ds["time_bnds"] = xr.DataArray(
+        data=bounds_array,
+        dims=("time", "bounds"),
+        coords={"time": ds.time},
+        attrs={"units": time_units, "calendar": calendar}
+    )
+
+    # Ensure CF-compliant metadata and encoding
+    ds["time"].attrs.update({
+        "units": time_units,
+        "calendar": calendar,
+        "bounds": "time_bnds",
+        "standard_name": "time",
+        "long_name": "Time"
+    })
+    ds["time"].encoding.update({
+        "units": time_units,
+        "calendar": calendar
+    })
+    ds["time_bnds"].encoding.update({
+        "units": time_units,
+        "calendar": calendar
+    })
 
     return ds
 
@@ -331,6 +465,7 @@ def set_ods_global_attributes(
     variable_id: str,
     variant_label: str,
     variant_info: str,
+    version: Optional[str] = str,
 ) -> xr.Dataset:
     """
     Set required NetCDF global attributes according to CF-Conventions 1.12 and ODS-2.5.
@@ -384,7 +519,7 @@ def set_ods_global_attributes(
             errors.append(f"must specify ancillary variable_ids if included")
     
     # Check vals dependent on "valid_" lists hard-coded above
-    if grid_label not in get_nested_dict(grid_labels_cv, ["grid_label","grid_label"]):
+    if grid_label not in grid_labels_cv["grid_label"]:
         errors.append(f"grid_label must match a key in obs4MIPs_grid_label.json")
     if product not in products_cv['product']:
         errors.append(f"product must match a key in obs4MIPs_product.json")
@@ -392,11 +527,11 @@ def set_ods_global_attributes(
         if external_variables not in valid_external_variables:
             errors.append(f"external_variables must be one of {valid_external_variables}")
     # Check vals present in Github json files
-    if frequency not in get_nested_dict(freq_cv, ["frequency","frequency"]):
+    if frequency not in freq_cv["frequency"]:
         errors.append("frequency must match a key in obs4MIPs_frequency.json")
     if institution_id not in institution_cv['institution_id']:
         errors.append("institution_id must match a key in obs4MIPs_institution_id.json")
-    if nominal_resolution not in get_nested_dict(nominal_res_cv, ["nominal_resolution","nominal_resolution"]):
+    if nominal_resolution not in nominal_res_cv["nominal_resolution"]:
         errors.append(
             "nominal_resolution must match a key in obs4MIPs_nominal_resolution.json"
         )
@@ -530,8 +665,9 @@ def set_ods_var_attrs(
             ds[variable_id].attrs['units'] = varattrs['units']
         if varattrs['positive']:
             ds[variable_id].attrs['positive'] = varattrs['positive']
-        
+        print(ds[variable_id].attrs)
         ds[variable_id].attrs.update({key: varattrs[key] for key in ['standard_name', 'long_name', 'comment', 'cell_methods', 'cell_measures']})
+        print(ds[variable_id].attrs)
     return ds
     
 def set_ods_calendar(

@@ -10,7 +10,7 @@ from ilamb3_data import (
     download_file,
     fix_lat,
     fix_lon,
-    fix_time,
+    set_time_attrs,
     gen_utc_timestamp,
     get_cmip6_variable_info,
     set_ods_global_attributes,
@@ -18,7 +18,13 @@ from ilamb3_data import (
     set_ods_var_attrs,
     set_ods_coords,
     set_ods_calendar,
+    add_time_bounds
 )
+
+import os
+from datetime import datetime
+
+today = datetime.now().strftime("%Y%m%d")
 
 RENAME = {"GPP": "gpp", "H": "hfss", "LE": "hfls"}
 
@@ -66,12 +72,22 @@ out = xr.Dataset(data_vars=data, coords=coords)
 
 # Fix up the dimensions
 #out = set_ods_calendar(out)
-out["time"] = fix_time(out)
+
+
 out["lat"] = fix_lat(out)
 out["lon"] = fix_lon(out)
 out = out.sortby(["time", "lat", "lon"])
-out = out.cf.add_bounds(["lat", "lon"])
-out = add_time_bounds_monthly(out)
+out = out.cf.add_bounds(["lat","lon"])
+out = add_time_bounds(out)
+out = set_time_attrs(out)
+out["time"].encoding.update({
+        "units": "days since 2007-01-16 00:00:00",
+        "calendar": "standard"})
+for v in ["time", "time_bounds"]:
+        for attr in ["units", "calendar", "_FillValue"]:
+            if attr in out[v].attrs:
+                del dsv[v].attrs[attr]
+#out['time_bnds'] = out.time_bnds.astype('float64')
 time_range = f"{out['time'].min().dt.year:d}{out['time'].min().dt.month:02d}"
 time_range += f"-{out['time'].max().dt.year:d}{out['time'].max().dt.month:02d}"
 # Populate attributes
@@ -79,6 +95,7 @@ attrs = {
     "activity_id": "obs4MIPs",
     "contact": "HAlemohammad@clarku.edu",
     "Conventions": "CF-1.12 ODS-2.5",
+    "comment":"Not yet obs4MIPs compliant: 'version' attribute is temporary; Cell measure variable areacella referred to by variable is not present in dataset or external variables",
     "creation_date": generate_stamp,
     "dataset_contributor": "Nathan Collier",
     "data_specs_version": "ODS2.5",
@@ -96,10 +113,10 @@ attrs = {
         remote_source,
         generate_stamp,
     ),
-    "institution": "Columbia University",
+    "institution": "Columbia University, NY, USA",
     "institution_id": "ColumbiaU",
     "license": "Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
-    "nominal_resolution": "1x1 degree",
+    "nominal_resolution": "100 km",
     "processing_code_location": "https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/WECANN/convert.py",
     "product": "derived",
     "realm": "land",
@@ -112,8 +129,9 @@ attrs = {
     "source_label":"WECANN",
     "source_type": "satellite_retrieval",
     "source_version_number": "1",
-    "variant_label":"BE",
+    "variant_label":"REF",
     "variant_info":"CMORized product prepared by ILAMB and CMIP IPO",
+    "version":today,
     "title": "Water, Energy, and Carbon with Artificial Neural Networks (WECANN)",
     "tracking_id": generate_trackingid,
 }
@@ -121,20 +139,36 @@ attrs = {
 # Write out files
 for var, da in out.items():
     dsv = da.to_dataset()
+    
+    
     dsv = out.drop_vars(set(out) - set([var]))
+    #dsv = add_time_bounds_monthly(dsv)
     dsv.attrs = attrs | {"variable_id": var}
     dsv = set_ods_global_attributes(dsv, **dsv.attrs)
     dsv = set_ods_var_attrs(dsv, var)
     dsv[var] = dsv[var].astype(np.float32)
     dsv = set_ods_coords(dsv)
-    dsv.to_netcdf(
-        "{variable_id}_{frequency}_{source_id}_{variant_label}_{grid_label}_{time_mark}.nc".format(
-            **dsv.attrs, time_mark=time_range
-        ),
+
+    out_path = (
+    "/home/users/dhegedus/CMIPplacement/beta/{activity_id}/{institution_id}/{source_id}/{frequency}/{variable_id}/   {grid_label}/"
+        + today
+        + "/{variable_id}_{frequency}_{source_id}_{variant_label}_{grid_label}_{time_mark}.nc"
+        ).format(**dsv.attrs, time_mark=time_range)
+
+    # Ensure the output directory exists
+    os.makedirs(os.path.dirname(out_path), exist_ok=True)
+
+
+    dsv.to_netcdf(out_path,
         encoding={'lat': {'zlib': False, '_FillValue': None},
                   'lon': {'zlib': False, '_FillValue': None},
                   'lat_bnds': {'zlib': False, '_FillValue': None, 'chunksizes': (180, 2)},
                   'lon_bnds': {'zlib': False, '_FillValue': None, 'chunksizes': (360, 2)},
+                  'time_bnds':{'_FillValue':None},
+                  'time':{"units": "days since 2007-01-16 00:00:00",
+                        "calendar": "standard",
+                        "dtype": "float64",
+                        '_FillValue':None},
                   var: {'zlib': True,
                         '_FillValue': np.float32(1.0E20),
                         'chunksizes': (1, 180, 360)}},

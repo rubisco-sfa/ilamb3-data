@@ -7,6 +7,7 @@ import os
 
 from ilamb3_data import (
     add_time_bounds_monthly,
+	DH_ODS_compliance
     download_file,
     fix_lat,
     fix_lon,
@@ -18,8 +19,12 @@ from ilamb3_data import (
     set_ods_var_attrs,
     set_ods_coords,
     set_ods_calendar,
-    add_time_bounds
-)
+    add_time_bounds,
+    download_from_html,
+    gen_utc_timestamp,
+    set_lat_attrs,
+    set_lon_attrs,
+    set_time_attrs)
 from datetime import datetime
 
 today = datetime.now().strftime("%Y%m%d")
@@ -36,7 +41,7 @@ for remote_source in remote_sources:
     local_source.mkdir(parents=True, exist_ok=True)
     source = local_source / Path(remote_source).name
     if not source.is_file():
-        download_file(remote_source, str(source))
+        download_from_html(remote_source, str(source))
     local_sources.append(source)
 download_stamp = gen_utc_timestamp(local_sources[0].stat().st_mtime)
 generate_stamp = gen_utc_timestamp()
@@ -53,8 +58,8 @@ out["mrrostdev"].attrs["stadard_name"] = "runoff_flux standard_deviation"
 # Fix up the dimensions
 #out["time"] = fix_time(out)
 #out = set_time_attrs(out)
-out["lat"] = fix_lat(out)
-out["lon"] = fix_lon(out)
+out = set_lat_attrs(out)
+out = set_lon_attrs(out)
 out = out.sortby(["time", "lat", "lon"])
 out = out.cf.add_bounds(["lat", "lon"])
 out = out.cf.add_bounds(["time"])

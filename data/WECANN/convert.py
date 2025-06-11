@@ -1,9 +1,11 @@
 from pathlib import Path
+from datetime import datetime
 
 import cf_xarray  # noqa
 import cftime as cf
-import xarray as xr
 import numpy as np
+import xarray as xr
+import os
 
 from ilamb3_data import (
     add_time_bounds_monthly,
@@ -13,16 +15,15 @@ from ilamb3_data import (
     set_time_attrs,
     gen_utc_timestamp,
     get_cmip6_variable_info,
+    set_lat_attrs,
+    set_lon_attrs,
+    set_ods_coords,
     set_ods_global_attributes,
-    gen_trackingid,
     set_ods_var_attrs,
     set_ods_coords,
     set_ods_calendar,
     add_time_bounds
 )
-
-import os
-from datetime import datetime
 
 today = datetime.now().strftime("%Y%m%d")
 
@@ -35,7 +36,7 @@ local_source = Path("_raw")
 local_source.mkdir(parents=True, exist_ok=True)
 local_source = local_source / Path(remote_source).name
 if not local_source.is_file():
-    download_file(remote_source, str(local_source))
+    download_from_html(remote_source, str(local_source))
 download_stamp = gen_utc_timestamp(local_source.stat().st_mtime)
 generate_stamp = gen_utc_timestamp()
 generate_trackingid = gen_trackingid()
@@ -71,9 +72,6 @@ for var, da in data.items():
 out = xr.Dataset(data_vars=data, coords=coords)
 
 # Fix up the dimensions
-#out = set_ods_calendar(out)
-
-
 out["lat"] = fix_lat(out)
 out["lon"] = fix_lon(out)
 out = out.sortby(["time", "lat", "lon"])
@@ -100,11 +98,10 @@ attrs = {
     "dataset_contributor": "Nathan Collier",
     "data_specs_version": "ODS2.5",
     "doi": "N/A",
-    #"external_variables": None,
     "frequency": "mon",
     "grid": "1x1 degree",
     "grid_label": "gn",
-    "has_auxdata":"False",
+    "has_auxdata": "False",
     "history": """
 %s: downloaded %s;
 %s: converted to obs4MIP format"""
@@ -126,7 +123,7 @@ attrs = {
     "source_id": "WECANN-1-0",
     "source_data_retrieval_date": download_stamp,
     "source_data_url": remote_source,
-    "source_label":"WECANN",
+    "source_label": "WECANN",
     "source_type": "satellite_retrieval",
     "source_version_number": "1",
     "variant_label":"REF",

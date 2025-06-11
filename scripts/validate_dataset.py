@@ -69,8 +69,13 @@ class ILAMBDataset(BaseModel):
             raise ValueError(
                 "Dataset does not have any data variables. An example data variable is 'cSoil'."
             )
-        # Check that the dataset has at least one variable but not more than 2
-        if len(ds.data_vars) >= 3:
+        # Check that the dataset has at least one variable but not more than 2,
+        # but this doesn't include variables that are `bounds` on the
+        # dimensions.
+        data_vars = set(ds.data_vars) - set(
+            [ds[v].attrs["bounds"] for v in ds.coords if "bounds" in ds[v].attrs]
+        )
+        if len(data_vars) >= 3:
             raise ValueError(
                 f"Dataset has too many data variables {ds.data_vars}. The measurement and the uncertainty are the only expected data variables. There should be one netCDF file per data variable if a dataset has multiple data variables."
             )
@@ -189,6 +194,10 @@ class ILAMBDataset(BaseModel):
         else:
             raise ValueError("Calendar attribute is missing from the time encoding.")
 
+        # Some could be climatologies, no check for now
+        if "climatology" in time_attrs:
+            return ds
+
         # Check bounds encoding
         time_bounds_name = time_attrs["bounds"]
         if time_bounds_name not in ds:
@@ -211,15 +220,6 @@ class ILAMBDataset(BaseModel):
                 "The second dimension should have length 2 to represent time bounds."
             )
 
-        # Check for the correct 'long_name' attribute for time_bounds
-        if (
-            "long_name" not in time_bounds.attrs
-            or time_bounds.attrs["long_name"] != "time_bounds"
-        ):
-            raise ValueError(
-                f"Time bounds '{time_bounds_name}' is missing its 'long_name':'time_bounds' attribute."
-            )
-
         return ds
 
     @field_validator("ds")
@@ -236,9 +236,11 @@ class ILAMBDataset(BaseModel):
         ]
 
         # Ensure there is only one latitude dimension
-        if len(lat_names_found) != 1:
+        if not lat_names_found:
+            return ds
+        if len(lat_names_found) > 1:
             raise ValueError(
-                f"Dataset has {len(lat_names_found)} latitude dimensions, expected exactly one. Found: {lat_names_found}"
+                f"Dataset has {len(lat_names_found)} latitude dimensions, expected one or None. Found: {lat_names_found}"
             )
 
         lat_name = lat_names_found[0]
@@ -295,9 +297,11 @@ class ILAMBDataset(BaseModel):
         ]
 
         # Ensure there is only one longitude dimension
-        if len(lon_names_found) != 1:
+        if not lon_names_found:
+            return ds
+        if len(lon_names_found) > 1:
             raise ValueError(
-                f"Dataset has {len(lon_names_found)} longitude dimensions, expected exactly one. Found: {lon_names_found}"
+                f"Dataset has {len(lon_names_found)} longitude dimensions, expected one or None. Found: {lon_names_found}"
             )
 
         lon_name = lon_names_found[0]

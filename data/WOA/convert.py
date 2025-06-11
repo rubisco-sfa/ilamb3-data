@@ -1,8 +1,10 @@
 from pathlib import Path
+from datetime import datetime
 
 import cftime as cf
 import numpy as np
 import xarray as xr
+import os
 
 from ilamb3_data import (
     download_from_html,
@@ -13,8 +15,6 @@ from ilamb3_data import (
     set_ods_coords,
     set_ods_calendar,
 )
-import os
-from datetime import datetime
 
 today = datetime.now().strftime("%Y%m%d")
 
@@ -83,6 +83,7 @@ climatology_bounds = np.asarray(
         ],
     ]
 ).T
+
 print(climatology_bounds)
 # Load the dataset for adjustments
 for v, vname in VARIABLE_NAME.items():
@@ -90,8 +91,7 @@ for v, vname in VARIABLE_NAME.items():
 
     # Drop/rename
     ds = ds.drop_vars(
-        [
-            f"{v}_mn",
+        [   f"{v}_mn",
             f"{v}_dd",
             f"{v}_sd",
             f"{v}_oa",

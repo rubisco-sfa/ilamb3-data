@@ -102,7 +102,7 @@ def _validate_and_format_authors(authors: list[str]) -> str:
 
 def generate_biblatex_techreport(
     cite_key: str,
-    author: str,
+    author: list[str],
     title: str,
     institution: str,
     year: str,
@@ -122,8 +122,9 @@ def generate_biblatex_techreport(
     Returns:
         str: Formatted BibLaTeX @techreport entry as a multiline string.
     """
+    author_str = _validate_and_format_authors(author)
     fields = {
-        "author": author,
+        "author": author_str,
         "title": title,
         "institution": institution,
         "year": year,
@@ -161,7 +162,6 @@ def generate_biblatex_article(
         str: Formatted BibLaTeX @article entry as a multiline string.
     """
     author_str = _validate_and_format_authors(author)
-
     fields = {
         "author": author_str,
         "title": title,
@@ -193,7 +193,7 @@ def generate_biblatex_article(
 
 def generate_biblatex_dataset(
     cite_key: str,
-    author: str,
+    author: list[str],
     title: str,
     year: str,
     url: str,
@@ -215,8 +215,9 @@ def generate_biblatex_dataset(
     Returns:
         str: Formatted BibLaTeX @misc entry as a multiline string.
     """
+    author_str = _validate_and_format_authors(author)
     fields = {
-        "author": author,
+        "author": author_str,
         "title": title,
         "year": year,
         "url": url,

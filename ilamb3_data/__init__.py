@@ -3,20 +3,19 @@ import json
 import os
 import urllib.request
 import uuid
+import warnings
+from calendar import monthrange
 from typing import Optional
 
 import cftime as cf
-from calendar import monthrange
 import numpy as np
+import pandas as pd
 import pooch
 import requests
 import xarray as xr
 from cf_units import Unit
 from intake_esgf import ESGFCatalog
 from tqdm import tqdm
-import uuid
-from cfunits import Units
-import pandas as pd
 
 
 def create_registry(registry_file: str) -> pooch.Pooch:
@@ -152,7 +151,7 @@ def download_from_zenodo(record: dict):
 
 
 # I think this can be useful to make sure people export the netcdfs the same way every time
-def get_filename(attrs: dict, time_range: str) -> str:
+def create_output_filename(attrs: dict, time_range: str) -> str:
     """
     Generate a NetCDF filename using required attributes and a time range.
 
@@ -167,11 +166,13 @@ def get_filename(attrs: dict, time_range: str) -> str:
         ValueError: If any required attributes are missing from `attrs`.
     """
     required_keys = [
-        "variable_id",
-        "frequency",
+        "activity_id",
+        "institution_id",
         "source_id",
-        "variant_label",
+        "frequency",
+        "variable_id",
         "grid_label",
+        "version",
     ]
 
     missing = [key for key in required_keys if key not in attrs]
@@ -181,7 +182,7 @@ def get_filename(attrs: dict, time_range: str) -> str:
             f"Expected keys: {', '.join(required_keys)}"
         )
 
-    filename = "{variable_id}_{frequency}_{source_id}_{variant_label}_{grid_label}_{time_mark}.nc".format(
+    filename = "{activity_id}_{institution_id}_{source_id}_{frequency}_{variable_id}_{grid_label}_{version}.nc".format(
         **attrs, time_mark=time_range
     )
     return filename
@@ -193,69 +194,135 @@ def get_cmip6_variable_info(variable_id: str) -> dict[str, str]:
     return df.iloc[0].to_dict()
 
 
-def set_time_attrs(ds: xr.Dataset, ref_date: str = "1979-01-01 00:00:00") -> xr.Dataset:
+def generate_time_bounds_var(time_da: xr.DataArray) -> xr.DataArray:
     """
-    Ensure the xarray dataset's time attributes are formatted according to CF-Conventions.
+    From CF-Conventions: "The boundary variable time_bnds associates a
+    time point i with the time interval whose boundaries are time_bnds(i,0)
+    and time_bnds(i,1). The instant time(i) should be contained within the
+    interval, or be at one end of it. For instance, with i=2 we might have
+    time(2)=10.5, time_bnds(2,0)=10.0, time_bnds(2,1)=11.0."
     """
-    assert "time" in ds
-    da = ds["time"]
+    units = time_da.encoding["units"]
+    calendar = time_da.encoding["calendar"]
 
-    # Convert numpy.datetime64 to cftime.DatetimeGregorian if needed
-    if np.issubdtype(da.dtype, np.datetime64):
-        # Use pandas to convert to datetime objects
-        dates = pd.to_datetime(da.values)
+    nums = cf.date2num(list(time_da.values), units, calendar)  # [365, 730, 1095, ...]
+    half = np.diff(nums) / 2.0  # [182.5, 182.5, 182.5, ...]
 
-        # Create cftime datetime objects
-        cftime_dates = [cf.DatetimeGregorian(date.year, date.month, date.day,
-                                                 date.hour, date.minute, date.second)
-                        for date in dates]
-        # Replace the original time coordinate with cftime dates
-        da = xr.DataArray(cftime_dates, dims="time")
+    lowers = np.empty_like(nums)
+    uppers = np.empty_like(nums)
+    for i in range(len(nums)):
+        lowers[i] = nums[i] - (
+            half[0] if i == 0 else half[i - 1]
+        )  # [182.5, 547.5, ...]
+        uppers[i] = nums[i] + (
+            half[i] if i < len(half) else half[-1]
+        )  # [547.5, 912.5, ...]
+    bounds_nums = np.stack(
+        [lowers, uppers], axis=1
+    )  # [[182.5, 547.5], [547.5, 912.5], ...]
 
-    # Update encoding for CF-compliant time representation
-    da.encoding = {
-        "units": f"days since {ref_date} 00:00:00",
-        "calendar": "gregorian",
-        "dtype": "float64"
-    }
-    da.attrs = {
-        "axis": "T",
-        "standard_name": "time",
-        "long_name": "time",
-    }
+    bounds_cfdates = cf.num2date(bounds_nums.tolist(), units, calendar)
+    cfdates_arr = np.array([tuple(pair) for pair in bounds_cfdates], dtype=object)
 
-    # Update the dataset with the corrected time DataArray
-    ds["time"] = da
-    return ds
-    
+    return cfdates_arr
 
-def fix_time(ds: xr.Dataset) -> xr.DataArray:
+
+def _to_cftime(time_da: xr.DataArray, calendar: str = "gregorian") -> xr.DataArray:
     """
-    Ensure the xarray dataset's time attributes are formatted according to CF-Conventions.
+    Convert a DataArray whose values are np.datetime64 or strings
+    into one whose values are cftime.Datetime* objects.
     """
-    assert "time" in ds
-    da = ds["time"]
+    # parse with pandas
+    pd_times = pd.to_datetime(time_da.values, utc=False)
+    # convert to plain Python datetimes
+    py_times = pd_times.to_pydatetime().tolist()
 
-    # Ensure time is an accepted xarray time dtype
-    if np.issubdtype(da.dtype, np.datetime64):
-        ref_date = np.datetime_as_string(da.min().values, unit="s")
-    elif isinstance(da.values[0], cf.datetime):
-        ref_date = da.values[0].strftime("%Y-%m-%d %H:%M:%S")
+    # re-build the list of datetimes with cf.datetime objects
+    cftime_vals = [
+        cf.DatetimeGregorian(dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second)
+        for dt in py_times
+    ]
+
+    # build a new data array from list
+    return xr.DataArray(
+        data=np.array(cftime_vals, dtype=object),
+        dims=time_da.dims,
+        coords={time_da.name: time_da.coords[time_da.name]},
+        name=time_da.name,
+    )
+
+
+def set_time_attrs(ds: xr.Dataset) -> xr.Dataset:
+    """
+    1) Recast ds.time into cftime.Datetime* under 'standard'
+    2) Stamp CF attributes + encoding (with _FillValue=None)
+    3) Drop & regenerate time_bnds (with matching encoding)
+    """
+
+    # select time coordinate values as data array
+    if "time" not in ds.coords:
+        raise ValueError("Dataset must have a 'time' coordinate.")
+    time_da = ds.coords["time"]
+
+    # ensure time coordinate values are of type cf.datetime
+    if np.issubdtype(time_da.dtype, np.datetime64) or (
+        time_da.dtype == object and isinstance(time_da.values[0], str)
+    ):
+        time_da = _to_cftime(time_da, calendar="gregorian")
+
+    elif isinstance(time_da.values[0], cf.datetime):
+        pass
     else:
-        raise TypeError(
-            f"Unsupported xarray time format: {type(da.values[0])}. Accepted types are np.datetime64 or cftime.datetime."
+        raise TypeError(f"Unsupported time type: {time_da.dtype}")
+
+    # convert cf.datetime objects of <calendar> to gregorian
+    calendar = time_da.values[0].calendar
+    ref_date = time_da.values[0]
+    ref_str = f"{ref_date.year:04d}-{ref_date.month:02d}-{ref_date.day:02d} {ref_date.hour:02d}:{ref_date.minute:02d}:{ref_date.second:02d}"
+    units = f"days since {ref_str}"
+    if calendar != "gregorian":
+        raw = list(time_da.values)
+        date_nums = cf.date2num(raw, units, calendar)
+        cf_date_arr = cf.num2date(date_nums.tolist(), units, "gregorian")
+        time_da = xr.DataArray(
+            cf_date_arr,
+            dims=("time",),
+            coords={"time": cf_date_arr},
+            name="time",
         )
 
-    da.encoding = {
-        "units": f"days since {ref_date}",
-        "calendar": da.encoding.get("calendar"),
-    }
-    da.attrs = {
+    # set CF attrs
+    attrs = {
         "axis": "T",
         "standard_name": "time",
         "long_name": "time",
+        "bounds": "time_bnds",
     }
-    ds["time"] = da
+
+    # assign time attributes
+    new_time_da = time_da.assign_attrs(**attrs)
+
+    # set encoding and re-assign coordinates
+    new_time_da.encoding = {
+        "units": units,
+        "calendar": "gregorian",
+        "dtype": "float64",
+        "_FillValue": None,
+    }
+    ds = ds.assign_coords(time=new_time_da)
+
+    # drop & regenerate bounds with matching encoding
+    if "time_bnds" in ds.data_vars:
+        ds = ds.drop_vars("time_bnds")
+    bnds_arr = generate_time_bounds_var(ds.coords["time"])
+
+    # add to the dataset
+    ds["time_bnds"] = (("time", "bnds"), bnds_arr)
+
+    # ensure no attrs and set encoding
+    ds["time_bnds"].encoding.clear()
+    ds["time_bnds"].attrs.clear()
+
     return ds
 
 
@@ -291,15 +358,85 @@ def set_lon_attrs(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
+def convert_units(
+    da: xr.DataArray,
+    target_units: str,
+) -> xr.DataArray:
+    """
+    Convert a DataArray from its current units to target_units using cf_units.
+    - Reads current_units = da.attrs['units']
+    - Raises if no units or not convertible
+    - Returns a new DataArray with converted data and units attr updated
+    """
+    current_units = da.attrs.get("units")
+    if current_units is None:
+        raise ValueError(f"Cannot convert: '{da.name}' has no 'units' attribute.")
+    orig_u = Unit(current_units)
+    target_u = Unit(target_units)
+    if not orig_u.is_convertible(target_u):
+        raise ValueError(
+            f"Units '{current_units}' are not convertible to '{target_units}'."
+        )
+
+    # do the conversion
+    new_vals = orig_u.convert(da.values, target_u)
+
+    # build a new DataArray, preserving dims/coords/name and other attrs
+    new_attrs = dict(da.attrs)
+    new_attrs["units"] = target_units
+
+    return xr.DataArray(
+        data=new_vals,
+        coords=da.coords,
+        dims=da.dims,
+        name=da.name,
+        attrs=new_attrs,
+        encoding=da.encoding,  # preserve encoding (you may want to clear dtype and calendar)
+    )
+
+
 def set_var_attrs(
-    ds: xr.Dataset, var: str, units: str, standard_name: str, long_name: str
+    ds: xr.Dataset,
+    var: str,
+    cmip6_units: str,
+    cmip6_standard_name: str,
+    cmip6_long_name: str,
+    *,
+    convert: bool = False,
 ) -> xr.Dataset:
     """
-    Ensure the xarray dataset's variable attributes are formatted according to CF-Conventions.
+    Ensure ds[var] has CF‐compliant attrs:
+      - Optionally convert from its existing units to cmip6_units
+      - Warn (but do not fail) if units don’t match and convert=False;
+        in that case, keep the original units.
+      - Then set units (either converted or original), standard_name, long_name
     """
-    assert var in ds
+    if var not in ds:
+        raise KeyError(f"Variable '{var}' not found in dataset.")
     da = ds[var]
-    da.attrs = {"units": units, "standard_name": standard_name, "long_name": long_name}
+
+    current_units = da.attrs.get("units")
+    effective_units = cmip6_units
+
+    if current_units is not None and current_units != cmip6_units:
+        if convert:
+            da = convert_units(da, cmip6_units)
+        else:
+            warnings.warn(
+                f"Variable '{var}' has units '{current_units}', "
+                f"requested '{cmip6_units}'. Keeping existing units."
+            )
+            effective_units = current_units
+
+    # now safe to overwrite attrs
+    da.assign_attrs(
+        {
+            "units": effective_units,
+            "standard_name": cmip6_standard_name,
+            "long_name": cmip6_long_name,
+        }
+    )
+
     ds[var] = da
     return ds
 
@@ -323,20 +460,22 @@ def add_time_bounds2(ds: xr.Dataset) -> xr.Dataset:
     """
     # Temporarily convert cftime to numpy datetime64 for bounds calculation
     if isinstance(ds["time"].values[0], cf.DatetimeGregorian):
-        times = [np.datetime64(t.strftime("%Y-%m-%dT%H:%M:%S")) for t in ds["time"].values]
+        times = [
+            np.datetime64(t.strftime("%Y-%m-%dT%H:%M:%S")) for t in ds["time"].values
+        ]
         ds = ds.assign_coords(time=("time", times))
-    
+
     time = ds["time"]
     encoding = time.encoding
 
     # Generate time bounds
-    bounds = np.empty((len(time), 2), dtype='datetime64[ns]')
+    bounds = np.empty((len(time), 2), dtype="datetime64[ns]")
     for i, t in enumerate(pd.to_datetime(time.values)):
         # Start of the month
         start = t.replace(day=1)
         # End of the month (last day)
         end = (start + pd.DateOffset(months=1) - pd.DateOffset(days=1)).normalize()
-        
+
         bounds[i, 0] = np.datetime64(start)
         bounds[i, 1] = np.datetime64(end)
 
@@ -344,7 +483,6 @@ def add_time_bounds2(ds: xr.Dataset) -> xr.Dataset:
     time_bounds = xr.DataArray(
         bounds,
         dims=["time", "bounds"],
-        
     )
     time_bounds.encoding.update(encoding)
     # Attach the bounds to the dataset
@@ -354,13 +492,45 @@ def add_time_bounds2(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
+def fix_time(ds: xr.Dataset) -> xr.DataArray:
+    """
+    Ensure the xarray dataset's time attributes are formatted according to CF-Conventions.
+    """
+    assert "time" in ds
+    da = ds["time"]
+
+    # Ensure time is an accepted xarray time dtype
+    if np.issubdtype(da.dtype, np.datetime64):
+        ref_date = np.datetime_as_string(da.min().values, unit="s")
+    elif isinstance(da.values[0], cf.datetime):
+        ref_date = da.values[0].strftime("%Y-%m-%d %H:%M:%S")
+    else:
+        raise TypeError(
+            f"Unsupported xarray time format: {type(da.values[0])}. Accepted types are np.datetime64 or cftime.datetime."
+        )
+
+    da.encoding = {
+        "units": f"days since {ref_date}",
+        "calendar": da.encoding.get("calendar"),
+    }
+    da.attrs = {
+        "axis": "T",
+        "standard_name": "time",
+        "long_name": "time",
+    }
+    ds["time"] = da
+    return ds
+
+
 def add_time_bounds(ds: xr.Dataset) -> xr.Dataset:
     """
     Add bounds to the time coordinate using numpy.datetime64 format.
     """
     # Temporarily convert cftime to numpy datetime64 for bounds calculation
     if isinstance(ds["time"].values[0], cf.DatetimeGregorian):
-        times = [np.datetime64(t.strftime("%Y-%m-%dT%H:%M:%S")) for t in ds["time"].values]
+        times = [
+            np.datetime64(t.strftime("%Y-%m-%dT%H:%M:%S")) for t in ds["time"].values
+        ]
         ds = ds.assign_coords(time=("time", times))
 
     # Add bounds using cf_xarray
@@ -385,7 +555,9 @@ def add_time_bounds_monthly(ds: xr.Dataset) -> xr.Dataset:
     times = ds["time"].values
     if not isinstance(times[0], cf.DatetimeNoLeap):
         if np.issubdtype(times.dtype, np.number):
-             times = xr.coding.times.decode_cf_datetime(times, units=time_units, calendar=calendar)
+            times = xr.coding.times.decode_cf_datetime(
+                times, units=time_units, calendar=calendar
+            )
 
     lower_bounds = []
     upper_bounds = []
@@ -407,25 +579,21 @@ def add_time_bounds_monthly(ds: xr.Dataset) -> xr.Dataset:
         data=bounds_array,
         dims=("time", "bounds"),
         coords={"time": ds.time},
-        attrs={"units": time_units, "calendar": calendar}
+        attrs={"units": time_units, "calendar": calendar},
     )
 
     # Ensure CF-compliant metadata and encoding
-    ds["time"].attrs.update({
-        "units": time_units,
-        "calendar": calendar,
-        "bounds": "time_bnds",
-        "standard_name": "time",
-        "long_name": "Time"
-    })
-    ds["time"].encoding.update({
-        "units": time_units,
-        "calendar": calendar
-    })
-    ds["time_bnds"].encoding.update({
-        "units": time_units,
-        "calendar": calendar
-    })
+    ds["time"].attrs.update(
+        {
+            "units": time_units,
+            "calendar": calendar,
+            "bounds": "time_bnds",
+            "standard_name": "time",
+            "long_name": "Time",
+        }
+    )
+    ds["time"].encoding.update({"units": time_units, "calendar": calendar})
+    ds["time_bnds"].encoding.update({"units": time_units, "calendar": calendar})
 
     return ds
 
@@ -500,19 +668,19 @@ def get_nested_dict(data, path, default=None):
     return data
 
 
-def set_ods_global_attributes(
+def set_ods_global_attrs(
     ds: xr.Dataset,
     *,
     activity_id="obs4MIPs",
-    aux_variable_id: Optional[str] = None,
-    comment: Optional[str] = None,
+    aux_variable_id: Optional[str] = "N/A",
+    comment: Optional[str] = "N/A",
     contact: str,
-    Conventions="CF-1.12 ODS-2.5",
+    conventions="CF-1.12 ODS-2.5",
     creation_date: str,
     dataset_contributor: str,
     data_specs_version: str,
-    doi: str = None,
-    external_variables: Optional[str] = None,
+    doi: str = "N/A",
+    external_variables: Optional[str] = "N/A",
     frequency: str,
     grid: str,
     grid_label: str,
@@ -529,13 +697,12 @@ def set_ods_global_attributes(
     region: str,
     source: str,
     source_id: str,
-    source_data_notes: Optional[str] = None,
-    source_data_retrieval_date: Optional[str] = None,
-    source_data_url: Optional[str] = None,
+    source_data_retrieval_date: Optional[str] = "N/A",
+    source_data_url: Optional[str] = "N/A",
     source_label: str,
     source_type: str,
     source_version_number: str,
-    title: Optional[str] = None,
+    title: Optional[str] = "N/A",
     tracking_id: str,
     variable_id: str,
     variant_label: str,
@@ -601,64 +768,66 @@ def set_ods_global_attributes(
 
     # Check vals dependent on "valid_" lists hard-coded above
     if grid_label not in grid_labels_cv["grid_label"]:
-        errors.append(f"grid_label must match a key in obs4MIPs_grid_label.json")
-    if product not in products_cv['product']:
-        errors.append(f"product must match a key in obs4MIPs_product.json")
-    if external_variables:
-        if external_variables not in valid_external_variables:
-            errors.append(
-                f"external_variables must be one of {valid_external_variables}"
-            )
+        errors.append("grid_label must match a key in obs4MIPs_grid_label.json")
+    if product not in products_cv["product"]:
+        errors.append("product must match a key in obs4MIPs_product.json")
+    # if external_variables:
+    #     if external_variables not in valid_external_variables:
+    #         errors.append(
+    #             f"external_variables must be one of {valid_external_variables}"
+    #         )
     # Check vals present in Github json files
     if frequency not in freq_cv["frequency"]:
         errors.append("frequency must match a key in obs4MIPs_frequency.json")
-    if institution_id not in institution_cv["institution_id"]:
-        errors.append("institution_id must match a key in obs4MIPs_institution_id.json")
-    if nominal_resolution not in nominal_res_cv["nominal_resolution"]:
-        errors.append(
-            "nominal_resolution must match a key in obs4MIPs_nominal_resolution.json"
-        )
+    # if institution_id not in institution_cv["institution_id"]:
+    #     errors.append("institution_id must match a key in obs4MIPs_institution_id.json")
+    # if nominal_resolution not in nominal_res_cv["nominal_resolution"]:
+    #     errors.append(
+    #         "nominal_resolution must match a key in obs4MIPs_nominal_resolution.json"
+    #     )
     if realm not in realm_cv["realm"]:
         errors.append("realm must match a key in obs4MIPs_realm.json")
     if region not in region_cv["region"]:
         errors.append("region must match a key in obs4MIPs_region.json")
-    if source_id not in source_id_cv["source_id"]:
-        errors.append("source_id must match a key in obs4MIPs_source_id.json")
-    if source_type not in source_type_cv["source_type"]:
-        errors.append("source_type must match a key in obs4MIPs_source_type.json")
+    # if source_id not in source_id_cv["source_id"]:
+    #     errors.append("source_id must match a key in obs4MIPs_source_id.json")
+    # if source_type not in source_type_cv["source_type"]:
+    #     errors.append("source_type must match a key in obs4MIPs_source_type.json")
     # Check vals *nested* within Github json files
-    if source_label != get_nested_dict(
-        source_id_cv, ["source_id", source_id, "source_label"]
-    ):
-        errors.append(
-            "source_label must match the label inside obs4MIPs_source_id.json[source_id]"
-        )
-    if source_version_number not in get_nested_dict(
-        source_id_cv, ["source_id", source_id, "source_version_number"]
-    ):
-        errors.append("source_version_number must match a value inside source_id entry")
-    if source_id not in get_nested_dict(top_level_cv, ["CV", "source_id"]):
-        errors.append(
-            "source_id must be present in obs4MIPs_CV.json under 'source_id' key"
-        )
-    if source not in get_nested_dict(
-        top_level_cv, ["CV", "source_id", source_id, "source"]
-    ):
-        errors.append(
-            "source must match a attribute in the 'source_id' section of obs4MIPs_CV.json"
-        )
-    if variable_id not in get_nested_dict(variable_cv, ["variable_entry"]):
-        errors.append(
-            f"variable_id must match a key in the 'variable_entry' section of {table_name}"
-        )
+    # if source_label != get_nested_dict(
+    #     source_id_cv, ["source_id", source_id, "source_label"]
+    # ):
+    #     errors.append(
+    #         "source_label must match the label inside obs4MIPs_source_id.json[source_id]"
+    #     )
+    # if source_version_number not in get_nested_dict(
+    #     source_id_cv, ["source_id", source_id, "source_version_number"]
+    # ):
+    #     errors.append("source_version_number must match a value inside source_id entry")
+    # if source_id not in get_nested_dict(top_level_cv, ["CV", "source_id"]):
+    #     errors.append(
+    #         "source_id must be present in obs4MIPs_CV.json under 'source_id' key"
+    #     )
+    # if source not in get_nested_dict(
+    #     top_level_cv, ["CV", "source_id", source_id, "source"]
+    # ):
+    #     errors.append(
+    #         "source must match a attribute in the 'source_id' section of obs4MIPs_CV.json"
+    #     )
+    # if variable_id not in get_nested_dict(variable_cv, ["variable_entry"]):
+    #     errors.append(
+    #         f"variable_id must match a key in the 'variable_entry' section of {table_name}"
+    #     )
 
     if errors:
         raise ValueError("\n".join(errors))
 
     attrs = {
         "activity_id": activity_id,
+        "aux_variable_id": aux_variable_id,
+        "comment": comment,
         "contact": contact,
-        "Conventions": "CF-1.12 ODS-2.5",
+        "Conventions": conventions,
         "creation_date": creation_date,
         "dataset_contributor": dataset_contributor,
         "data_specs_version": data_specs_version,
@@ -678,17 +847,18 @@ def set_ods_global_attributes(
         "references": references,
         "region": region,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_region.json
         "source": source,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/Tables/obs4MIPs_CV.json (search source_id)
-        "source_id": source_id,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_id.json
         "source_data_retrieval_date": source_data_retrieval_date,
         "source_data_url": source_data_url,
+        "source_id": source_id,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_id.json
         "source_label": source_label,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_id.json (nested source_label)
         "source_type": source_type,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_type.json
         "source_version_number": source_version_number,  # https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_id.json (nested source_version_number)
         "title": title,
         "tracking_id": tracking_id,  # automatically detected by CMOR (hdl:21.14102/<uuid>)
         "variable_id": variable_id,  # https://clipc-services.ceda.ac.uk/dreq/index/CMORvar.html
-        "variant_label": variant_label,  # same as source_id (if prepped by them), or "BE" if source_id unknown, ensemble member identified via -r1, -r2, ..., -rN
         "variant_info": variant_info,  # description of who prepared the data, describe obs data variance if applicable
+        "variant_label": variant_label,  # same as source_id (if prepped by them), or "BE" if source_id unknown, ensemble member identified via -r1, -r2, ..., -rN
+        "version": version,
     }
 
     missing = [k for k, v in attrs.items() if v is None]
@@ -740,16 +910,27 @@ def set_ods_var_attrs(ds: xr.Dataset, variable_id: str) -> xr.Dataset:
                 inplace=True,
             )
             ds[variable_id].attrs["history"] = (
-                f'{gen_utc_timestamp()} altered by ILAMB: Converted units from \'{ds[variable_id].attrs['units']}\' to \'{varattrs['units']}\'.'
+                f"{gen_utc_timestamp()} altered by ILAMB: Converted units from '{ds[variable_id].attrs['units']}' to '{varattrs['units']}'."
             )
             ds[variable_id].attrs["original_units"] = ds[variable_id].attrs["units"]
             ds[variable_id].attrs["units"] = varattrs["units"]
         else:
-            ds[variable_id].attrs['units'] = varattrs['units']
-        if varattrs['positive']:
-            ds[variable_id].attrs['positive'] = varattrs['positive']
+            ds[variable_id].attrs["units"] = varattrs["units"]
+        if varattrs["positive"]:
+            ds[variable_id].attrs["positive"] = varattrs["positive"]
         print(ds[variable_id].attrs)
-        ds[variable_id].attrs.update({key: varattrs[key] for key in ['standard_name', 'long_name', 'comment', 'cell_methods', 'cell_measures']})
+        ds[variable_id].attrs.update(
+            {
+                key: varattrs[key]
+                for key in [
+                    "standard_name",
+                    "long_name",
+                    "comment",
+                    "cell_methods",
+                    "cell_measures",
+                ]
+            }
+        )
         print(ds[variable_id].attrs)
     return ds
 

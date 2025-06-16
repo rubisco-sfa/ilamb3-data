@@ -16,7 +16,6 @@ if not local_source.is_file():
     download_file(remote_source, str(local_source))
 download_stamp = gen_utc_timestamp(local_source.stat().st_mtime)
 generate_stamp = gen_utc_timestamp()
-generate_trackingid = gen_trackingid()
 
 # Load the dataset for adjustments
 ds = xr.open_dataset(local_source).load()

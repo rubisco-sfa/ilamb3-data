@@ -322,6 +322,7 @@ def set_time_attrs(ds: xr.Dataset) -> xr.Dataset:
     # ensure no attrs and set encoding
     ds["time_bnds"].encoding.clear()
     ds["time_bnds"].attrs.clear()
+    ds["time_bnds"].encoding = {"dtype": "float64"}
 
     return ds
 

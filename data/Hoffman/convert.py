@@ -1,6 +1,7 @@
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import xarray as xr
 
 from ilamb3_data import (
@@ -9,7 +10,6 @@ from ilamb3_data import (
     gen_trackingid,
     gen_utc_timestamp,
     get_cmip6_variable_info,
-    set_ods_coords,
     set_ods_global_attrs,
     set_time_attrs,
     set_var_attrs,
@@ -31,7 +31,7 @@ tracking_id = gen_trackingid()
 
 # Load the dataset for adjustments
 ds = xr.open_dataset(local_source).load()
-ds = set_time_attrs(ds)
+ds = set_time_attrs(ds, bounds_frequency="Y")
 
 # Get attribute info for fgco2 and nbp
 fgco2_info = get_cmip6_variable_info("fgco2")
@@ -44,6 +44,7 @@ ds = set_var_attrs(
     cmip6_units=fgco2_info["variable_units"],
     cmip6_standard_name=fgco2_info["cf_standard_name"],
     cmip6_long_name=fgco2_info["variable_long_name"],
+    target_dtype=np.float32,
     convert=False,
 )
 ds = set_var_attrs(
@@ -52,24 +53,24 @@ ds = set_var_attrs(
     cmip6_units=nbp_info["variable_units"],
     cmip6_standard_name=nbp_info["cf_standard_name"],
     cmip6_long_name=nbp_info["variable_long_name"],
+    target_dtype=np.float32,
     convert=False,
 )
 
-# Create {var}lbnd and {var}ubnd ancillary variables from {var}_bnds variables
-ds.fgco2.attrs["ancillary_variables"] = "fgco2lbnd fgco2ubnd"
-ds["fgco2lbnd"] = ds.fgco2_bnds[:, 0]
-ds["fgco2lbnd"].attrs.pop("units", None)
-ds["fgco2ubnd"] = ds.fgco2_bnds[:, 1]
-ds["fgco2ubnd"].attrs.pop("units", None)
+# Assign ancillary variables
+ds.fgco2.attrs["ancillary_variables"] = "fgco2_bnds"
+ds.fgco2_bnds.attrs["long_name"] = (
+    "95% confidence interval for surface downward mass flux of carbon as CO2 (positive flux is into the ocean)"
+)
+ds.fgco2_bnds.encoding["_FillValue"] = np.float32(1.0e20)  # CMOR default
+ds.nbp.attrs["ancillary_variables"] = "nbp_bnds"
+ds.nbp_bnds.attrs["long_name"] = (
+    "95% confidence interval for carbon mass flux out of atmosphere due to net biospheric production (positive flux is into the land)"
+)
+ds.nbp_bnds.encoding["_FillValue"] = np.float32(1.0e20)  # CMOR default
 
-ds.nbp.attrs["ancillary_variables"] = "nbplbnd nbpubnd"
-ds["nbplbnd"] = ds.nbp_bnds[:, 0]
-ds["nbplbnd"].attrs.pop("units", None)
-ds["nbpubnd"] = ds.nbp_bnds[:, 1]
-ds["nbpubnd"].attrs.pop("units", None)
 
-# Remove the old {var}_bnds variables and clean up attrs
-ds = ds.drop_vars(["fgco2_bnds", "nbp_bnds"])
+# Clean up attrs
 for var in ds.variables:
     ds[var].encoding.pop("missing_value", None)
 ds["nbp"].attrs.pop("bounds", None)
@@ -96,12 +97,12 @@ for var in ["nbp", "fgco2"]:
     out_ds = set_ods_global_attrs(
         out_ds,
         activity_id="obs4MIPs",
-        aux_variable_id=f"{var}lbnd {var}ubnd",
-        comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet; The Boundary variables 'time_bnds' should not have the attributes: '['units']'",
+        aux_variable_id=f"{var}_bnds",
+        comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
         contact="Forrest Hoffman (forrest@climatemodeling.org)",
         conventions="CF-1.12 ODS-2.5",
         creation_date=creation_stamp,
-        dataset_contributor="Nathan Collier",
+        dataset_contributor="Morgan Steckler",
         data_specs_version="2.5",
         doi="N/A",
         external_variables="N/A",
@@ -133,11 +134,11 @@ for var in ["nbp", "fgco2"]:
         variable_id=var,
         variant_label="REF",
         variant_info="CMORized product prepared by ILAMB and CMIP IPO",
-        version=today_stamp,
+        version=f"v{today_stamp}",
     )
 
-    out_ds = set_ods_coords(out_ds)
     out_path = create_output_filename(out_ds.attrs, time_range)
-    out_ds.to_netcdf(out_path)
+    encoding = {name: out_ds[name].encoding.copy() for name in out_ds.variables}
+    out_ds.to_netcdf(out_path, encoding=encoding, format="NETCDF4")
 
     print(f"Exported to {out_path}")

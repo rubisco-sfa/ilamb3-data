@@ -6,7 +6,7 @@ import xarray as xr
 
 from ilamb3_data import (
     create_output_filename,
-    download_file,
+    download_from_html,
     gen_trackingid,
     gen_utc_timestamp,
     get_cmip6_variable_info,
@@ -21,7 +21,7 @@ local_source = Path("_raw")
 local_source.mkdir(parents=True, exist_ok=True)
 local_source = local_source / Path(remote_source).name
 if not local_source.is_file():
-    download_file(remote_source, str(local_source))
+    download_from_html(remote_source, str(local_source))
 
 # Set timestamps and tracking id
 download_stamp = gen_utc_timestamp(local_source.stat().st_mtime)
@@ -60,12 +60,12 @@ ds = set_var_attrs(
 # Assign ancillary variables
 ds.fgco2.attrs["ancillary_variables"] = "fgco2_bnds"
 ds.fgco2_bnds.attrs["long_name"] = (
-    "95% confidence interval for surface downward mass flux of carbon as CO2 (positive flux is into the ocean)"
+    f"{ds.fgco2.attrs['standard_name']} 95_pct_confidence_interval"
 )
 ds.fgco2_bnds.encoding["_FillValue"] = np.float32(1.0e20)  # CMOR default
 ds.nbp.attrs["ancillary_variables"] = "nbp_bnds"
 ds.nbp_bnds.attrs["long_name"] = (
-    "95% confidence interval for carbon mass flux out of atmosphere due to net biospheric production (positive flux is into the land)"
+    f"{ds.nbp.attrs['standard_name']} 95_pct_confidence_interval"
 )
 ds.nbp_bnds.encoding["_FillValue"] = np.float32(1.0e20)  # CMOR default
 

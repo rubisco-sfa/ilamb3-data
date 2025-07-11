@@ -1,3 +1,6 @@
+# Last update: 11 July 2025
+# Author: Morgan Steckler (stecklermr@ornl.gov)
+
 from datetime import datetime
 from pathlib import Path
 
@@ -118,7 +121,7 @@ for var in ["nbp", "fgco2"]:
 {creation_stamp}: converted to obs4MIPs format""",
         institution="University of California at Irvine and Oak Ridge National Laboratory",
         institution_id="UCI-ORNL",
-        license="N/A",
+        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
         nominal_resolution="N/A",
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/Hoffman/convert.py",
         product="derived",

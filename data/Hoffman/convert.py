@@ -69,16 +69,11 @@ ds.nbp_bnds.attrs["long_name"] = (
 )
 ds.nbp_bnds.encoding["_FillValue"] = np.float32(1.0e20)  # CMOR default
 
-
 # Clean up attrs
 for var in ds.variables:
     ds[var].encoding.pop("missing_value", None)
 ds["nbp"].attrs.pop("bounds", None)
 ds["fgco2"].attrs.pop("bounds", None)
-
-# Extract time info for file naming purposes
-time_range = f"{ds['time'].min().dt.year:d}{ds['time'].min().dt.month:02d}"
-time_range += f"-{ds['time'].max().dt.year:d}{ds['time'].max().dt.month:02d}"
 
 # Set global attributes and export
 for var in ["nbp", "fgco2"]:
@@ -112,7 +107,7 @@ for var in ["nbp", "fgco2"]:
         has_auxdata="True",
         history=f"""
 {download_stamp}: downloaded {remote_source};
-{creation_stamp}: converted to obs4MIP format""",
+{creation_stamp}: converted to obs4MIPs format""",
         institution="University of California at Irvine and Oak Ridge National Laboratory",
         institution_id="UCI-ORNL",
         license="N/A",
@@ -137,7 +132,7 @@ for var in ["nbp", "fgco2"]:
         version=f"v{today_stamp}",
     )
 
-    out_path = create_output_filename(out_ds.attrs, time_range)
+    out_path = create_output_filename(out_ds.attrs)
     encoding = {name: out_ds[name].encoding.copy() for name in out_ds.variables}
     out_ds.to_netcdf(out_path, encoding=encoding, format="NETCDF4")
 

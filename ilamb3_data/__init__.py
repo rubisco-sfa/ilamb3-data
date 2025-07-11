@@ -120,7 +120,7 @@ def download_from_zenodo(record: dict):
             print(f"File URL not found for file: {file_name}")
 
 
-def create_output_filename(attrs: dict, time_range: str) -> str:
+def create_output_filename(attrs: dict) -> str:
     """
     Generate a NetCDF filename using required attributes and a time range.
 
@@ -152,7 +152,7 @@ def create_output_filename(attrs: dict, time_range: str) -> str:
         )
 
     filename = "{activity_id}_{institution_id}_{source_id}_{frequency}_{variable_id}_{grid_label}_{version}.nc".format(
-        **attrs, time_mark=time_range
+        **attrs
     )
     return filename
 
@@ -301,47 +301,52 @@ def _to_cftime(time_da: xr.DataArray, calendar: str = "gregorian") -> xr.DataArr
     )
 
 
-def set_time_attrs(ds: xr.Dataset, bounds_frequency=None) -> xr.Dataset:
+def set_time_attrs(
+    ds: xr.Dataset, bounds_frequency=None, dst_calendar="gregorian"
+) -> xr.Dataset:
     """
     1) Recast ds.time into cftime.Datetime* under 'standard'
     2) Stamp CF attributes + encoding (with _FillValue=None)
     3) Drop & regenerate time_bnds (with matching encoding)
     """
 
-    # select time coordinate values as data array
     if "time" not in ds.coords:
         raise ValueError("Dataset must have a 'time' coordinate.")
-    time_da = ds.coords["time"]
+
+    # 1) extract & normalize to cftime
+    time_da = ds.coords["time"].copy()
     time_da.attrs.pop("units", None)
 
-    # ensure time coordinate values are of type cf.datetime
     if np.issubdtype(time_da.dtype, np.datetime64) or (
         time_da.dtype == object and isinstance(time_da.values[0], str)
     ):
-        time_da = _to_cftime(time_da, calendar="gregorian")
-
+        time_da = _to_cftime(time_da, calendar=dst_calendar)
     elif isinstance(time_da.values[0], cf.datetime):
         pass
     else:
         raise TypeError(f"Unsupported time type: {time_da.dtype}")
 
-    # convert cf.datetime objects of <calendar> to gregorian
-    calendar = time_da.values[0].calendar
-    ref_date = time_da.values[0]
-    ref_str = f"{ref_date.year:04d}-{ref_date.month:02d}-{ref_date.day:02d} {ref_date.hour:02d}:{ref_date.minute:02d}:{ref_date.second:02d}"
+    # 2) build CF reference string
+    ref_calendar = time_da.values[0].calendar
+    ref = time_da.values[0]
+    ref_str = (
+        f"{ref.year:04d}-{ref.month:02d}-{ref.day:02d} "
+        f"{ref.hour:02d}:{ref.minute:02d}:{ref.second:02d}"
+    )
     units = f"days since {ref_str}"
-    if calendar != "gregorian":
-        raw = list(time_da.values)
-        date_nums = cf.date2num(raw, units, calendar)
-        cf_date_arr = cf.num2date(date_nums.tolist(), units, "gregorian")
+
+    if ref_calendar != dst_calendar:
+        nums = cf.date2num(list(time_da.values), units, ref_calendar)
+        cf_dates = cf.num2date(nums.tolist(), units, dst_calendar)
         time_da = xr.DataArray(
-            cf_date_arr,
+            cf_dates,
             dims=("time",),
-            coords={"time": cf_date_arr},
+            coords={"time": cf_dates},
             name="time",
         )
+    new_calendar = time_da.values[0].calendar
 
-    # set CF attrs
+    # define cf-compliant attributes
     attrs = {
         "axis": "T",
         "standard_name": "time",
@@ -349,32 +354,37 @@ def set_time_attrs(ds: xr.Dataset, bounds_frequency=None) -> xr.Dataset:
         "bounds": "time_bnds",
     }
 
-    # assign time attributes
-    new_time_da = time_da.assign_attrs(**attrs)
-    new_time_da.attrs.pop("_FillValue", None)
+    # convert cftime objects to "days since...float64"
+    time_nums = cf.date2num(time_da.values.tolist(), units, new_calendar)
+    time_nums = np.array(time_nums, dtype="float64")
 
-    # set encoding and re-assign coordinates
+    # build the new time coordinate
+    new_time_da = xr.DataArray(
+        data=time_nums,
+        dims=time_da.dims,
+        coords={"time": time_nums},
+        attrs={**attrs, "units": units, "calendar": new_calendar},
+        name=time_da.name,
+    )
     new_time_da.encoding = {
-        "units": units,
-        "calendar": "gregorian",
         "dtype": "float64",
         "_FillValue": None,
     }
     ds = ds.assign_coords(time=new_time_da)
 
-    # drop & regenerate bounds with matching encoding
-    if "time_bnds" in ds.data_vars:
+    # drop & regenerate bounds
+    if "time_bnds" in ds:
         ds = ds.drop_vars("time_bnds")
-    bnds_arr = generate_time_bounds_nparr(ds.coords["time"], bounds_frequency)
+    bnds_arr = generate_time_bounds_nparr(time_da, bounds_frequency)
 
-    # add to the dataset
-    ds["time_bnds"] = (("time", "bnds"), bnds_arr)
+    # convert cftime objects to "days since...float64"
+    bnds_nums = cf.date2num(bnds_arr.flatten().tolist(), units, new_calendar)
+    bnds_nums = np.array(bnds_nums, dtype="float64").reshape(bnds_arr.shape)
 
-    # ensure no attrs and set encoding
-    ds["time_bnds"].attrs.pop("_FillValue", None)
-    ds["time_bnds"].encoding.clear()
+    ds["time_bnds"] = (("time", "bnds"), bnds_nums)
     ds["time_bnds"].attrs.clear()
-    ds["time_bnds"].encoding = {"dtype": "float64", "_FillValue": None}
+    ds["time_bnds"].encoding.clear()
+    ds["time_bnds"].encoding = {"_FillValue": None}
 
     return ds
 
@@ -391,6 +401,8 @@ def set_lat_attrs(ds: xr.Dataset) -> xr.Dataset:
         "standard_name": "latitude",
         "long_name": "Latitude",
     }
+    da.encoding.clear()
+    da.encoding = {"_FillValue": None, "dtype": "float64"}
     ds["lat"] = da
     return ds
 
@@ -407,6 +419,8 @@ def set_lon_attrs(ds: xr.Dataset) -> xr.Dataset:
         "standard_name": "longitude",
         "long_name": "Longitude",
     }
+    da.encoding.clear()
+    da.encoding = {"_FillValue": None, "dtype": "float64"}
     ds["lon"] = da
     return ds
 
@@ -444,7 +458,7 @@ def convert_units(
         dims=da.dims,
         name=da.name,
         attrs=new_attrs,
-        encoding=da.encoding,  # preserve encoding (you may want to clear dtype and calendar)
+        # encoding=da.encoding,  # preserve encoding (you may want to clear dtype and calendar)
     )
 
 
@@ -457,6 +471,19 @@ _FILL_VALUES = {
     np.float32: np.float32(1.0e20),  # float
     np.float64: np.float64(1.0e20),  # double
 }
+
+
+def _sanitize_units(u: str) -> str:
+    """
+    Turn things like "gC/m^2/day" into "gC m-2 day-1",
+    which cf_units will happily parse.
+    """
+    # 1) squared denominators: /foo^2 → " foo-2"
+    u = re.sub(r"/([A-Za-z]+)\^?2", r" \1-2", u)
+    # 2) any remaining single denominators: /foo → " foo-1"
+    u = re.sub(r"/([A-Za-z]+)", r" \1-1", u)
+    # 3) strip any stray carets
+    return u.replace("^", "")
 
 
 def set_var_attrs(
@@ -487,10 +514,28 @@ def set_var_attrs(
     mv = da.encoding.get("missing_value", da.attrs.get("missing_value", None))
 
     # optional unit conversion
-    current_units = da.attrs.get("units")
+    # ——————— normalize any “unit”/“units” attr ———————
+    # look for a key that lowercased is “unit” or “units”
+    units_key = next((k for k in da.attrs if k.lower() in ("unit", "units")), None)
+    if units_key:
+        # pop it out under the exact name “units”
+        da.attrs["units"] = da.attrs.pop(units_key)
+
+        # sanitize any funky notation so cf_units can parse it
+        orig = da.attrs["units"]
+        sanitized_unit = _sanitize_units(orig)
+        if sanitized_unit != orig:
+            da.attrs["units"] = sanitized_unit
+
+    current_units = da.attrs.get("units", None)
     effective_units = cmip6_units
+
+    # only convert if there *was* an original units and it differs
     if current_units is not None and current_units != cmip6_units:
         if convert:
+            warnings.warn(
+                f"Converting {var} units from {current_units} to {cmip6_units}"
+            )
             da = convert_units(da, cmip6_units)
         else:
             warnings.warn(
@@ -511,23 +556,21 @@ def set_var_attrs(
         }
     )
 
+    # set final dtype
+    final_dt = np.dtype(target_dtype) if target_dtype is not None else da.dtype
+    da = da.astype(final_dt)
+
     # determine final dtype and CF _FillValue
     final_dt = np.dtype(target_dtype) if target_dtype is not None else da.dtype
     fill = _FILL_VALUES.get(final_dt, None)
     if fill is None:
-        # fallback by kind and itemsize
+        # fallback by kind and size
         if final_dt.kind in ("i", "u"):
-            if final_dt.itemsize == 1:
-                fill = _FILL_VALUES[np.int8]
-            elif final_dt.itemsize == 2:
-                fill = _FILL_VALUES[np.int16]
-            elif final_dt.itemsize == 4:
-                fill = _FILL_VALUES[np.int32]
+            fill = _FILL_VALUES.get(
+                {1: np.int8, 2: np.int16, 4: np.int32}[final_dt.itemsize]
+            )
         elif final_dt.kind == "f":
-            if final_dt.itemsize == 4:
-                fill = _FILL_VALUES[np.float32]
-            elif final_dt.itemsize == 8:
-                fill = _FILL_VALUES[np.float64]
+            fill = _FILL_VALUES.get({4: np.float32, 8: np.float64}[final_dt.itemsize])
         elif final_dt.kind == "S":
             fill = _FILL_VALUES[np.dtype("S1")]
 
@@ -550,6 +593,46 @@ def set_var_attrs(
 
     # reassign back to dataset
     ds[var] = da
+    return ds
+
+
+def set_coord_bounds(ds: xr.Dataset, coord: str) -> xr.Dataset:
+    """
+    Compute and attach 1D cell boundaries for `coord` using a 'bnds'=2
+    dimension. Ensures float32 output, no _FillValue, and correct ordering.
+    """
+    # make sure we have a 'bnds' dimension of length 2
+    if "nv" in ds.dims:
+        ds = ds.rename_dims({"nv": "bnds"})
+
+    # cast and grab values
+    ds[coord] = ds[coord].astype(np.float64)
+    vals = ds[coord].values
+    n = vals.shape[0]
+
+    # build midpoint array
+    b = np.empty((n, 2), dtype=np.float64)
+    # interior midpoints
+    b[1:-1, 0] = 0.5 * (vals[:-2] + vals[1:-1])
+    b[1:-1, 1] = 0.5 * (vals[1:-1] + vals[2:])
+    # edge extrapolation
+    d0 = vals[1] - vals[0]
+    dn = vals[-1] - vals[-2]
+    b[0] = [vals[0] - d0 / 2, vals[0] + d0 / 2]
+    b[-1] = [vals[-1] - dn / 2, vals[-1] + dn / 2]
+
+    # sort so column 0 is lower bound, column 1 is upper
+    b = np.sort(b, axis=1)
+
+    # assign into the dataset
+    name = f"{coord}_bnds"
+    ds[name] = ((coord, "bnds"), b)
+
+    # reset encoding and attrs
+    ds[name].encoding = {"_FillValue": None, "dtype": "float64"}
+    ds[coord].attrs["bounds"] = name
+    ds[coord].encoding = {"_FillValue": None, "dtype": "float64"}
+
     return ds
 
 
@@ -981,7 +1064,7 @@ def set_ods_global_attrs(
     if missing:
         raise ValueError(f"Missing required global attributes: {', '.join(missing)}")
 
-    ds.attrs.update(attrs)
+    ds.attrs = attrs
 
     return ds
 

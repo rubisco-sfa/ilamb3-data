@@ -85,10 +85,6 @@ ds = set_coord_bounds(ds, "lat")
 ds = set_coord_bounds(ds, "lon")
 ds = ds.sortby(["time", "lat", "lon"])
 
-# Extract time info for file naming purposes
-time_range = f"{ds['time'].min().dt.year:d}{ds['time'].min().dt.month:02d}"
-time_range += f"-{ds['time'].max().dt.year:d}{ds['time'].max().dt.month:02d}"
-
 # Set global attributes and export
 for var in vars:
     # Create one ds per variable
@@ -142,7 +138,7 @@ for var in vars:
         version=f"v{today_stamp}",
     )
 
-    out_path = create_output_filename(out_ds.attrs, time_range)
+    out_path = create_output_filename(out_ds.attrs)
     out_ds.to_netcdf(out_path)
 
     print(f"Exported to {out_path}")

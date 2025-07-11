@@ -57,17 +57,25 @@ ds = set_var_attrs(
     convert=False,
 )
 
-# Assign ancillary variables
+# Assign fgco2 ancillary variable
 ds.fgco2.attrs["ancillary_variables"] = "fgco2_bnds"
-ds.fgco2_bnds.attrs["long_name"] = (
-    f"{ds.fgco2.attrs['standard_name']} 95_pct_confidence_interval"
-)
-ds.fgco2_bnds.encoding["_FillValue"] = np.float32(1.0e20)  # CMOR default
+ds.fgco2_bnds.attrs = {
+    "long_name": f"{ds.fgco2.attrs['standard_name']} 95_pct_confidence_interval"
+}
+ds.fgco2_bnds.encoding = {
+    "_FillValue": np.float32(1.0e20),  # CMOR default
+    "dtype": "float32",
+}
+
+# Assign nbp ancillary variable
 ds.nbp.attrs["ancillary_variables"] = "nbp_bnds"
-ds.nbp_bnds.attrs["long_name"] = (
-    f"{ds.nbp.attrs['standard_name']} 95_pct_confidence_interval"
-)
-ds.nbp_bnds.encoding["_FillValue"] = np.float32(1.0e20)  # CMOR default
+ds.nbp_bnds.attrs = {
+    "long_name": f"{ds.nbp.attrs['standard_name']} 95_pct_confidence_interval"
+}
+ds.nbp_bnds.encoding = {
+    "_FillValue": np.float32(1.0e20),  # CMOR default
+    "dtype": "float32",
+}
 
 # Clean up attrs
 for var in ds.variables:

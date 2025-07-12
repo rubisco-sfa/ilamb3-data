@@ -129,7 +129,7 @@ for var in vars:
         source_data_url=remote_source,
         source_label="WECANN",
         source_type="satellite_retrieval",
-        source_version_number="1",
+        source_version_number="1.0",
         title="Water, Energy, and Carbon with Artificial Neural Networks (WECANN)",
         tracking_id=tracking_id,
         variable_id=var,

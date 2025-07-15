@@ -95,6 +95,7 @@ for var in ["nbp", "fgco2"]:
     dynamic_attrs = {
         "realm": "land" if var == "nbp" else "ocean",
         "region": f"global_{'land' if var == 'nbp' else 'ocean'}",
+        "source": "Multimodel mean of spatially and temporally integrated global change of ocean carbon inventory",
         "title": f"{'Land' if var == 'nbp' else 'Ocean'} anthropogenic carbon flux estimates",
         "variable_id": var,
     }
@@ -119,22 +120,26 @@ for var in ["nbp", "fgco2"]:
         history=f"""
 {download_stamp}: downloaded {remote_source};
 {creation_stamp}: converted to obs4MIPs format""",
-        institution="University of California at Irvine and Oak Ridge National Laboratory",
+        institution="University of California at Irvine, Irvine, CA, USA; Oak Ridge National Laboratory, Oak Ridge, TN, USA",
         institution_id="UCI-ORNL",
         license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
+<<<<<<< Updated upstream
         nominal_resolution="N/A",
+=======
+        nominal_resolution="site",
+>>>>>>> Stashed changes
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/Hoffman/convert.py",
         product="derived",
         realm=dynamic_attrs["realm"],
         references="Hoffman, Forrest M., James T. Randerson, Vivek K. Arora, Qing Bao, Patricia Cadule, Duoying Ji, Chris D. Jones, Michio Kawamiya, Samar Khatiwala, Keith Lindsay, Atsushi Obata, Elena Shevliakova, Katharina D. Six, Jerry F. Tjiputra, Evgeny M. Volodin, and Tongwen Wu, (2014) Causes and Implications of Persistent Atmospheric Carbon Dioxide Biases in Earth System Models. J. Geophys. Res. Biogeosci., 119(2):141-162. doi:10.1002/2013JG002381.",
         region=dynamic_attrs["region"],
-        source="N/A",
-        source_id="Hoffman",
+        source="Annual land carbon storage change = (total anthropogenic CO2 emissions) - (atmospheric carbon storage change) - (ocean carbon storage change)",
+        source_id="Hoffman-1-0",
         source_data_retrieval_date=download_stamp,
         source_data_url=remote_source,
         source_label="Hoffman",
         source_type="stastical-estimate",
-        source_version_number="1",
+        source_version_number="1.0",
         title=dynamic_attrs["title"],
         tracking_id=tracking_id,
         variable_id=var,

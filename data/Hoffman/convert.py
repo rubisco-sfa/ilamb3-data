@@ -95,7 +95,6 @@ for var in ["nbp", "fgco2"]:
     dynamic_attrs = {
         "realm": "land" if var == "nbp" else "ocean",
         "region": f"global_{'land' if var == 'nbp' else 'ocean'}",
-        "source": "Multimodel mean of spatially and temporally integrated global change of ocean carbon inventory",
         "title": f"{'Land' if var == 'nbp' else 'Ocean'} anthropogenic carbon flux estimates",
         "variable_id": var,
     }
@@ -123,11 +122,7 @@ for var in ["nbp", "fgco2"]:
         institution="University of California at Irvine, Irvine, CA, USA; Oak Ridge National Laboratory, Oak Ridge, TN, USA",
         institution_id="UCI-ORNL",
         license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
-<<<<<<< Updated upstream
-        nominal_resolution="N/A",
-=======
         nominal_resolution="site",
->>>>>>> Stashed changes
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/Hoffman/convert.py",
         product="derived",
         realm=dynamic_attrs["realm"],

@@ -276,6 +276,82 @@ def generate_time_bounds_nparr(time_da, freq=None):
     return np.array([tuple(x) for x in bnds_dt], dtype=object)
 
 
+def _infer_src_time_dtype(time_da):
+    vals = time_da.values
+    first = vals.flat[0]
+    # cftime
+    if isinstance(first, cf.datetime):
+        return "cftime"
+    # numpy.datetime64
+    if np.issubdtype(vals.dtype, np.datetime64):
+        return "datetime64"
+    # raw floats (assume float32 here)
+    if vals.dtype == np.float32:
+        return "float32"
+    raise ValueError(
+        f"Cannot infer time dtype: first element is {type(first)}, dtype={vals.dtype}.  "
+        "Expected cf.datetime objects ('cftime'), numpy.datetime64, or float32."
+    )
+
+
+def _to_cftime_from_floats(time_da: xr.DataArray, dst_calendar: str):
+    # pull units & calendar…
+    units = time_da.encoding.get("units") or time_da.attrs.get("units")
+    calendar = time_da.encoding.get("calendar") or time_da.attrs.get(
+        "calendar", dst_calendar
+    )
+    if not units:
+        raise ValueError("Units are missing. Must supply units for float-based time...")
+
+    # special‐case real‐calendar months
+    m = re.match(r"months since (\d{4}-\d{2}-\d{2})(?:\s+.*)?", units)
+    if m and calendar != "360_day":
+        # parse the reference date
+        ref_str = m.group(1)
+        # use pandas to parse into a Timestamp
+        ref_dt = pd.to_datetime(ref_str)
+
+        out_dates = []
+        for n_months in time_da.values:
+            # round or floor to int if needed
+            nm = int(n_months)
+            # add that many months
+            ts = ref_dt + pd.DateOffset(months=nm)
+            # build a cftime object (gregorian)
+            out_dates.append(
+                cf.DatetimeGregorian(
+                    ts.year,
+                    ts.month,
+                    ts.day,
+                    ts.hour,
+                    ts.minute,
+                    ts.second,
+                    ts.microsecond,
+                )
+            )
+        return xr.DataArray(
+            np.array(out_dates, dtype=object),
+            dims=time_da.dims,
+            coords={time_da.name: time_da.coords[time_da.name]},
+            name=time_da.name,
+        )
+
+    # everything else—use cftime
+    try:
+        dates = cf.num2date(time_da.values.tolist(), units, calendar)
+    except ValueError as e:
+        raise ValueError(
+            f"Cannot decode {units!r} with calendar {calendar!r}: {e}"
+        ) from e
+
+    return xr.DataArray(
+        np.array(dates, dtype=object),
+        dims=time_da.dims,
+        coords={time_da.name: time_da.coords[time_da.name]},
+        name=time_da.name,
+    )
+
+
 def _to_cftime(time_da: xr.DataArray, calendar: str = "gregorian") -> xr.DataArray:
     """
     Convert a DataArray whose values are np.datetime64 or strings
@@ -313,22 +389,28 @@ def set_time_attrs(
     if "time" not in ds.coords:
         raise ValueError("Dataset must have a 'time' coordinate.")
 
-    # 1) extract & normalize to cftime
+    # extract time data
     time_da = ds.coords["time"].copy()
-    time_da.attrs.pop("units", None)
 
-    if np.issubdtype(time_da.dtype, np.datetime64) or (
-        time_da.dtype == object and isinstance(time_da.values[0], str)
-    ):
-        time_da = _to_cftime(time_da, calendar=dst_calendar)
-    elif isinstance(time_da.values[0], cf.datetime):
-        pass
+    # infer time dtype
+    inferred_dtype = _infer_src_time_dtype(time_da)
+
+    # 2) Dispatch to the correct converter
+    if inferred_dtype == "cftime":
+        time_cftime = time_da.copy()
+    elif inferred_dtype == "datetime64":
+        time_cftime = _to_cftime(time_da, calendar=dst_calendar)
+    elif inferred_dtype == "float32":
+        time_cftime = _to_cftime_from_floats(time_da, dst_calendar)
     else:
-        raise TypeError(f"Unsupported time type: {time_da.dtype}")
+        print(
+            f"Inferred dtype is {inferred_dtype}, but it should be one of  'cftime', 'datetime64', or 'float32'"
+        )
 
-    # 2) build CF reference string
-    ref_calendar = time_da.values[0].calendar
-    ref = time_da.values[0]
+    # 2) build CF reference string and set units
+    ref_calendar = time_cftime.values[0].calendar
+    time_cftime.attrs.pop("units", None)  # don't assume the original units are correct
+    ref = time_cftime.values[0]
     ref_str = (
         f"{ref.year:04d}-{ref.month:02d}-{ref.day:02d} "
         f"{ref.hour:02d}:{ref.minute:02d}:{ref.second:02d}"
@@ -336,15 +418,15 @@ def set_time_attrs(
     units = f"days since {ref_str}"
 
     if ref_calendar != dst_calendar:
-        nums = cf.date2num(list(time_da.values), units, ref_calendar)
+        nums = cf.date2num(list(time_cftime.values), units, ref_calendar)
         cf_dates = cf.num2date(nums.tolist(), units, dst_calendar)
-        time_da = xr.DataArray(
+        time_cftime = xr.DataArray(
             cf_dates,
             dims=("time",),
             coords={"time": cf_dates},
             name="time",
         )
-    new_calendar = time_da.values[0].calendar
+    new_calendar = time_cftime.values[0].calendar
 
     # define cf-compliant attributes
     attrs = {
@@ -355,16 +437,16 @@ def set_time_attrs(
     }
 
     # convert cftime objects to "days since...float64"
-    time_nums = cf.date2num(time_da.values.tolist(), units, new_calendar)
+    time_nums = cf.date2num(time_cftime.values.tolist(), units, new_calendar)
     time_nums = np.array(time_nums, dtype="float64")
 
     # build the new time coordinate
     new_time_da = xr.DataArray(
         data=time_nums,
-        dims=time_da.dims,
+        dims=time_cftime.dims,
         coords={"time": time_nums},
         attrs={**attrs, "units": units, "calendar": new_calendar},
-        name=time_da.name,
+        name=time_cftime.name,
     )
     new_time_da.encoding = {
         "dtype": "float64",
@@ -375,7 +457,7 @@ def set_time_attrs(
     # drop & regenerate bounds
     if "time_bnds" in ds:
         ds = ds.drop_vars("time_bnds")
-    bnds_arr = generate_time_bounds_nparr(time_da, bounds_frequency)
+    bnds_arr = generate_time_bounds_nparr(time_cftime, bounds_frequency)
 
     # convert cftime objects to "days since...float64"
     bnds_nums = cf.date2num(bnds_arr.flatten().tolist(), units, new_calendar)

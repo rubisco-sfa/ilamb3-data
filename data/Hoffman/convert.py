@@ -1,15 +1,18 @@
+# Last update: 11 July 2025
+# Author: Morgan Steckler (stecklermr@ornl.gov)
+
 from datetime import datetime
 from pathlib import Path
 
+import numpy as np
 import xarray as xr
 
 from ilamb3_data import (
     create_output_filename,
-    download_file,
+    download_from_html,
     gen_trackingid,
     gen_utc_timestamp,
     get_cmip6_variable_info,
-    set_ods_coords,
     set_ods_global_attrs,
     set_time_attrs,
     set_var_attrs,
@@ -21,7 +24,7 @@ local_source = Path("_raw")
 local_source.mkdir(parents=True, exist_ok=True)
 local_source = local_source / Path(remote_source).name
 if not local_source.is_file():
-    download_file(remote_source, str(local_source))
+    download_from_html(remote_source, str(local_source))
 
 # Set timestamps and tracking id
 download_stamp = gen_utc_timestamp(local_source.stat().st_mtime)
@@ -31,7 +34,7 @@ tracking_id = gen_trackingid()
 
 # Load the dataset for adjustments
 ds = xr.open_dataset(local_source).load()
-ds = set_time_attrs(ds)
+ds = set_time_attrs(ds, bounds_frequency="Y")
 
 # Get attribute info for fgco2 and nbp
 fgco2_info = get_cmip6_variable_info("fgco2")
@@ -44,6 +47,7 @@ ds = set_var_attrs(
     cmip6_units=fgco2_info["variable_units"],
     cmip6_standard_name=fgco2_info["cf_standard_name"],
     cmip6_long_name=fgco2_info["variable_long_name"],
+    target_dtype=np.float32,
     convert=False,
 )
 ds = set_var_attrs(
@@ -52,32 +56,35 @@ ds = set_var_attrs(
     cmip6_units=nbp_info["variable_units"],
     cmip6_standard_name=nbp_info["cf_standard_name"],
     cmip6_long_name=nbp_info["variable_long_name"],
+    target_dtype=np.float32,
     convert=False,
 )
 
-# Create {var}lbnd and {var}ubnd ancillary variables from {var}_bnds variables
-ds.fgco2.attrs["ancillary_variables"] = "fgco2lbnd fgco2ubnd"
-ds["fgco2lbnd"] = ds.fgco2_bnds[:, 0]
-ds["fgco2lbnd"].attrs.pop("units", None)
-ds["fgco2ubnd"] = ds.fgco2_bnds[:, 1]
-ds["fgco2ubnd"].attrs.pop("units", None)
+# Assign fgco2 ancillary variable
+ds.fgco2.attrs["ancillary_variables"] = "fgco2_bnds"
+ds.fgco2_bnds.attrs = {
+    "long_name": f"{ds.fgco2.attrs['standard_name']} 95_pct_confidence_interval"
+}
+ds.fgco2_bnds.encoding = {
+    "_FillValue": np.float32(1.0e20),  # CMOR default
+    "dtype": "float32",
+}
 
-ds.nbp.attrs["ancillary_variables"] = "nbplbnd nbpubnd"
-ds["nbplbnd"] = ds.nbp_bnds[:, 0]
-ds["nbplbnd"].attrs.pop("units", None)
-ds["nbpubnd"] = ds.nbp_bnds[:, 1]
-ds["nbpubnd"].attrs.pop("units", None)
+# Assign nbp ancillary variable
+ds.nbp.attrs["ancillary_variables"] = "nbp_bnds"
+ds.nbp_bnds.attrs = {
+    "long_name": f"{ds.nbp.attrs['standard_name']} 95_pct_confidence_interval"
+}
+ds.nbp_bnds.encoding = {
+    "_FillValue": np.float32(1.0e20),  # CMOR default
+    "dtype": "float32",
+}
 
-# Remove the old {var}_bnds variables and clean up attrs
-ds = ds.drop_vars(["fgco2_bnds", "nbp_bnds"])
+# Clean up attrs
 for var in ds.variables:
     ds[var].encoding.pop("missing_value", None)
 ds["nbp"].attrs.pop("bounds", None)
 ds["fgco2"].attrs.pop("bounds", None)
-
-# Extract time info for file naming purposes
-time_range = f"{ds['time'].min().dt.year:d}{ds['time'].min().dt.month:02d}"
-time_range += f"-{ds['time'].max().dt.year:d}{ds['time'].max().dt.month:02d}"
 
 # Set global attributes and export
 for var in ["nbp", "fgco2"]:
@@ -96,12 +103,12 @@ for var in ["nbp", "fgco2"]:
     out_ds = set_ods_global_attrs(
         out_ds,
         activity_id="obs4MIPs",
-        aux_variable_id=f"{var}lbnd {var}ubnd",
-        comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet; The Boundary variables 'time_bnds' should not have the attributes: '['units']'",
+        aux_variable_id=f"{var}_bnds",
+        comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
         contact="Forrest Hoffman (forrest@climatemodeling.org)",
         conventions="CF-1.12 ODS-2.5",
         creation_date=creation_stamp,
-        dataset_contributor="Nathan Collier",
+        dataset_contributor="Morgan Steckler",
         data_specs_version="2.5",
         doi="N/A",
         external_variables="N/A",
@@ -111,33 +118,33 @@ for var in ["nbp", "fgco2"]:
         has_auxdata="True",
         history=f"""
 {download_stamp}: downloaded {remote_source};
-{creation_stamp}: converted to obs4MIP format""",
-        institution="University of California at Irvine and Oak Ridge National Laboratory",
+{creation_stamp}: converted to obs4MIPs format""",
+        institution="University of California at Irvine, Irvine, CA, USA; Oak Ridge National Laboratory, Oak Ridge, TN, USA",
         institution_id="UCI-ORNL",
-        license="N/A",
-        nominal_resolution="N/A",
+        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
+        nominal_resolution="site",
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/Hoffman/convert.py",
         product="derived",
         realm=dynamic_attrs["realm"],
         references="Hoffman, Forrest M., James T. Randerson, Vivek K. Arora, Qing Bao, Patricia Cadule, Duoying Ji, Chris D. Jones, Michio Kawamiya, Samar Khatiwala, Keith Lindsay, Atsushi Obata, Elena Shevliakova, Katharina D. Six, Jerry F. Tjiputra, Evgeny M. Volodin, and Tongwen Wu, (2014) Causes and Implications of Persistent Atmospheric Carbon Dioxide Biases in Earth System Models. J. Geophys. Res. Biogeosci., 119(2):141-162. doi:10.1002/2013JG002381.",
         region=dynamic_attrs["region"],
-        source="N/A",
-        source_id="Hoffman",
+        source="Annual land carbon storage change = (total anthropogenic CO2 emissions) - (atmospheric carbon storage change) - (ocean carbon storage change)",
+        source_id="Hoffman-1-0",
         source_data_retrieval_date=download_stamp,
         source_data_url=remote_source,
         source_label="Hoffman",
         source_type="stastical-estimate",
-        source_version_number="1",
+        source_version_number="1.0",
         title=dynamic_attrs["title"],
         tracking_id=tracking_id,
         variable_id=var,
         variant_label="REF",
         variant_info="CMORized product prepared by ILAMB and CMIP IPO",
-        version=today_stamp,
+        version=f"v{today_stamp}",
     )
 
-    out_ds = set_ods_coords(out_ds)
-    out_path = create_output_filename(out_ds.attrs, time_range)
-    out_ds.to_netcdf(out_path)
+    out_path = create_output_filename(out_ds.attrs)
+    encoding = {name: out_ds[name].encoding.copy() for name in out_ds.variables}
+    out_ds.to_netcdf(out_path, encoding=encoding, format="NETCDF4")
 
     print(f"Exported to {out_path}")

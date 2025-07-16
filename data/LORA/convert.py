@@ -62,7 +62,10 @@ ds.mrro.attrs["ancillary_variables"] = "mrro_stdev"
 ds.mrro_stdev.attrs["long_name"] = (
     f"{ds.mrro.attrs['standard_name']} standard_deviation"
 )
-ds.mrro_stdev.encoding["_FillValue"] = np.float32(1.0e20)  # CMOR default
+ds.mrro_stdev.encoding = {
+    "_FillValue": np.float32(1.0e20),  # CMOR default
+    "dtype": "float32",
+}
 
 # Clean up attrs
 ds = set_time_attrs(ds, bounds_frequency="M")

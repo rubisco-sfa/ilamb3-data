@@ -1,6 +1,7 @@
 import datetime
 import json
 import os
+import re
 import urllib.request
 import uuid
 import warnings
@@ -15,6 +16,7 @@ import requests
 import xarray as xr
 from cf_units import Unit
 from intake_esgf import ESGFCatalog
+from pandas.tseries.frequencies import to_offset
 from tqdm import tqdm
 
 
@@ -39,38 +41,6 @@ def create_registry(registry_file: str) -> pooch.Pooch:
 
 
 def download_from_html(remote_source: str, local_source: str | None = None) -> str:
-    """
-    Download a file from a remote URL to a local path.
-    If the "content-length" header is missing, it falls back to a simple download.
-    """
-    if local_source is None:
-        local_source = os.path.basename(remote_source)
-    if os.path.isfile(local_source):
-        return local_source
-
-    resp = requests.get(remote_source, stream=True)
-    try:
-        total_size = int(resp.headers.get("content-length"))
-    except (TypeError, ValueError):
-        total_size = 0
-
-    with open(local_source, "wb") as fdl:
-        if total_size:
-            with tqdm(
-                total=total_size, unit="B", unit_scale=True, desc=local_source
-            ) as pbar:
-                for chunk in resp.iter_content(chunk_size=1024):
-                    if chunk:
-                        fdl.write(chunk)
-                        pbar.update(len(chunk))
-        else:
-            for chunk in resp.iter_content(chunk_size=1024):
-                if chunk:
-                    fdl.write(chunk)
-    return local_source
-
-
-def download_file(remote_source: str, local_source: str | None = None) -> str:
     """
     Download a file from a remote URL to a local path.
     If the "content-length" header is missing, it falls back to a simple download.
@@ -150,8 +120,7 @@ def download_from_zenodo(record: dict):
             print(f"File URL not found for file: {file_name}")
 
 
-# I think this can be useful to make sure people export the netcdfs the same way every time
-def create_output_filename(attrs: dict, time_range: str) -> str:
+def create_output_filename(attrs: dict) -> str:
     """
     Generate a NetCDF filename using required attributes and a time range.
 
@@ -183,7 +152,7 @@ def create_output_filename(attrs: dict, time_range: str) -> str:
         )
 
     filename = "{activity_id}_{institution_id}_{source_id}_{frequency}_{variable_id}_{grid_label}_{version}.nc".format(
-        **attrs, time_mark=time_range
+        **attrs
     )
     return filename
 
@@ -194,37 +163,117 @@ def get_cmip6_variable_info(variable_id: str) -> dict[str, str]:
     return df.iloc[0].to_dict()
 
 
-def generate_time_bounds_var(time_da: xr.DataArray) -> xr.DataArray:
+def generate_time_bounds_nparr(time_da, freq=None):
     """
-    From CF-Conventions: "The boundary variable time_bnds associates a
-    time point i with the time interval whose boundaries are time_bnds(i,0)
-    and time_bnds(i,1). The instant time(i) should be contained within the
-    interval, or be at one end of it. For instance, with i=2 we might have
-    time(2)=10.5, time_bnds(2,0)=10.0, time_bnds(2,1)=11.0."
+    Build CF-style time bounds for a 1D cftime-based time coord,
+    returning a NumPy array of shape (ntime, 2), dtype=object.
+
+    Parameters
+    ----------
+    time_da : xarray.DataArray
+      1D DataArray of cftime.Datetime* objects (time axis)
+    freq : str or None
+      pandas offset alias (e.g. "M", "A", "D", "2W").
+      If None, uses median spacing to infer (annual, monthly, daily, weekly).
     """
-    units = time_da.encoding["units"]
-    calendar = time_da.encoding["calendar"]
+    dates = time_da.values
+    n = dates.size
 
-    nums = cf.date2num(list(time_da.values), units, calendar)  # [365, 730, 1095, ...]
-    half = np.diff(nums) / 2.0  # [182.5, 182.5, 182.5, ...]
+    # helper to rebuild cftime of same class
+    def mk(dt, year, month, day, hour, minute, second, microsecond):
+        return dt.__class__(
+            year,
+            month,
+            day,
+            hour,
+            minute,
+            second,
+            microsecond,
+            has_year_zero=dt.has_year_zero,
+        )
 
-    lowers = np.empty_like(nums)
-    uppers = np.empty_like(nums)
-    for i in range(len(nums)):
-        lowers[i] = nums[i] - (
-            half[0] if i == 0 else half[i - 1]
-        )  # [182.5, 547.5, ...]
-        uppers[i] = nums[i] + (
-            half[i] if i < len(half) else half[-1]
-        )  # [547.5, 912.5, ...]
-    bounds_nums = np.stack(
-        [lowers, uppers], axis=1
-    )  # [[182.5, 547.5], [547.5, 912.5], ...]
+    # infer freq if not provided
+    if freq is None:
+        units = time_da.encoding.get("units")
+        cal = time_da.encoding.get("calendar")
+        nums = cf.date2num(dates.tolist(), units, cal)
+        diffs = np.diff(nums)
+        med = float(np.median(diffs))
+        if 364 < med < 366:
+            freq = "A"
+        elif 27 < med < 32:
+            freq = "M"
+        elif 0.9 < med < 1.1:
+            freq = "D"
+        elif 6.9 < med < 7.1:
+            freq = "W"
+        else:
+            freq = None
 
-    bounds_cfdates = cf.num2date(bounds_nums.tolist(), units, calendar)
-    cfdates_arr = np.array([tuple(pair) for pair in bounds_cfdates], dtype=object)
+    # calendar attributes
+    units = time_da.encoding.get("units")
+    calendar = time_da.encoding.get("calendar")
+    bnds = []
 
-    return cfdates_arr
+    if freq:
+        try:
+            offset = pd.tseries.frequencies.to_offset(freq)
+        except ValueError:
+            offset = None
+
+        if offset is not None:
+            for dt in dates:
+                # convert to pandas Timestamp
+                ts = pd.Timestamp(
+                    dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second
+                )
+                lo_ts = ts.to_period(freq).to_timestamp()
+                # compute preliminary high
+                hi_temp = lo_ts + offset
+                # if this offset is an "End" type, make hi = start of next period
+                cls_name = offset.__class__.__name__
+                if cls_name.endswith("End"):
+                    begin_name = cls_name.replace("End", "Begin")
+                    begin_cls = getattr(pd.offsets, begin_name)
+                    hi_ts = lo_ts + begin_cls(1)
+                else:
+                    hi_ts = hi_temp
+
+                bnds.append(
+                    (
+                        mk(
+                            dt,
+                            lo_ts.year,
+                            lo_ts.month,
+                            lo_ts.day,
+                            lo_ts.hour,
+                            lo_ts.minute,
+                            lo_ts.second,
+                            lo_ts.microsecond,
+                        ),
+                        mk(
+                            dt,
+                            hi_ts.year,
+                            hi_ts.month,
+                            hi_ts.day,
+                            hi_ts.hour,
+                            hi_ts.minute,
+                            hi_ts.second,
+                            hi_ts.microsecond,
+                        ),
+                    )
+                )
+            if len(bnds) == n:
+                return np.array(bnds, dtype=object)
+
+    # fallback: half-interval midpoint
+    nums = cf.date2num(dates.tolist(), units, calendar)
+    diffs = np.diff(nums) / 2.0
+    lowers = nums - np.concatenate(([diffs[0]], diffs))
+    uppers = nums + np.concatenate((diffs, [diffs[-1]]))
+    bnds_nums = np.stack([lowers, uppers], axis=1)
+    bnds_dt = cf.num2date(bnds_nums.tolist(), units, calendar)
+    return np.array([tuple(x) for x in bnds_dt], dtype=object)
 
 
 def _to_cftime(time_da: xr.DataArray, calendar: str = "gregorian") -> xr.DataArray:
@@ -252,46 +301,52 @@ def _to_cftime(time_da: xr.DataArray, calendar: str = "gregorian") -> xr.DataArr
     )
 
 
-def set_time_attrs(ds: xr.Dataset) -> xr.Dataset:
+def set_time_attrs(
+    ds: xr.Dataset, bounds_frequency=None, dst_calendar="gregorian"
+) -> xr.Dataset:
     """
     1) Recast ds.time into cftime.Datetime* under 'standard'
     2) Stamp CF attributes + encoding (with _FillValue=None)
     3) Drop & regenerate time_bnds (with matching encoding)
     """
 
-    # select time coordinate values as data array
     if "time" not in ds.coords:
         raise ValueError("Dataset must have a 'time' coordinate.")
-    time_da = ds.coords["time"]
 
-    # ensure time coordinate values are of type cf.datetime
+    # 1) extract & normalize to cftime
+    time_da = ds.coords["time"].copy()
+    time_da.attrs.pop("units", None)
+
     if np.issubdtype(time_da.dtype, np.datetime64) or (
         time_da.dtype == object and isinstance(time_da.values[0], str)
     ):
-        time_da = _to_cftime(time_da, calendar="gregorian")
-
+        time_da = _to_cftime(time_da, calendar=dst_calendar)
     elif isinstance(time_da.values[0], cf.datetime):
         pass
     else:
         raise TypeError(f"Unsupported time type: {time_da.dtype}")
 
-    # convert cf.datetime objects of <calendar> to gregorian
-    calendar = time_da.values[0].calendar
-    ref_date = time_da.values[0]
-    ref_str = f"{ref_date.year:04d}-{ref_date.month:02d}-{ref_date.day:02d} {ref_date.hour:02d}:{ref_date.minute:02d}:{ref_date.second:02d}"
+    # 2) build CF reference string
+    ref_calendar = time_da.values[0].calendar
+    ref = time_da.values[0]
+    ref_str = (
+        f"{ref.year:04d}-{ref.month:02d}-{ref.day:02d} "
+        f"{ref.hour:02d}:{ref.minute:02d}:{ref.second:02d}"
+    )
     units = f"days since {ref_str}"
-    if calendar != "gregorian":
-        raw = list(time_da.values)
-        date_nums = cf.date2num(raw, units, calendar)
-        cf_date_arr = cf.num2date(date_nums.tolist(), units, "gregorian")
+
+    if ref_calendar != dst_calendar:
+        nums = cf.date2num(list(time_da.values), units, ref_calendar)
+        cf_dates = cf.num2date(nums.tolist(), units, dst_calendar)
         time_da = xr.DataArray(
-            cf_date_arr,
+            cf_dates,
             dims=("time",),
-            coords={"time": cf_date_arr},
+            coords={"time": cf_dates},
             name="time",
         )
+    new_calendar = time_da.values[0].calendar
 
-    # set CF attrs
+    # define cf-compliant attributes
     attrs = {
         "axis": "T",
         "standard_name": "time",
@@ -299,30 +354,37 @@ def set_time_attrs(ds: xr.Dataset) -> xr.Dataset:
         "bounds": "time_bnds",
     }
 
-    # assign time attributes
-    new_time_da = time_da.assign_attrs(**attrs)
+    # convert cftime objects to "days since...float64"
+    time_nums = cf.date2num(time_da.values.tolist(), units, new_calendar)
+    time_nums = np.array(time_nums, dtype="float64")
 
-    # set encoding and re-assign coordinates
+    # build the new time coordinate
+    new_time_da = xr.DataArray(
+        data=time_nums,
+        dims=time_da.dims,
+        coords={"time": time_nums},
+        attrs={**attrs, "units": units, "calendar": new_calendar},
+        name=time_da.name,
+    )
     new_time_da.encoding = {
-        "units": units,
-        "calendar": "gregorian",
         "dtype": "float64",
         "_FillValue": None,
     }
     ds = ds.assign_coords(time=new_time_da)
 
-    # drop & regenerate bounds with matching encoding
-    if "time_bnds" in ds.data_vars:
+    # drop & regenerate bounds
+    if "time_bnds" in ds:
         ds = ds.drop_vars("time_bnds")
-    bnds_arr = generate_time_bounds_var(ds.coords["time"])
+    bnds_arr = generate_time_bounds_nparr(time_da, bounds_frequency)
 
-    # add to the dataset
-    ds["time_bnds"] = (("time", "bnds"), bnds_arr)
+    # convert cftime objects to "days since...float64"
+    bnds_nums = cf.date2num(bnds_arr.flatten().tolist(), units, new_calendar)
+    bnds_nums = np.array(bnds_nums, dtype="float64").reshape(bnds_arr.shape)
 
-    # ensure no attrs and set encoding
-    ds["time_bnds"].encoding.clear()
+    ds["time_bnds"] = (("time", "bnds"), bnds_nums)
     ds["time_bnds"].attrs.clear()
-    ds["time_bnds"].encoding = {"dtype": "float64"}
+    ds["time_bnds"].encoding.clear()
+    ds["time_bnds"].encoding = {"_FillValue": None}
 
     return ds
 
@@ -337,8 +399,10 @@ def set_lat_attrs(ds: xr.Dataset) -> xr.Dataset:
         "axis": "Y",
         "units": "degrees_north",
         "standard_name": "latitude",
-        "long_name": "latitude",
+        "long_name": "Latitude",
     }
+    da.encoding.clear()
+    da.encoding = {"_FillValue": None, "dtype": "float64"}
     ds["lat"] = da
     return ds
 
@@ -353,8 +417,10 @@ def set_lon_attrs(ds: xr.Dataset) -> xr.Dataset:
         "axis": "X",
         "units": "degrees_east",
         "standard_name": "longitude",
-        "long_name": "longitude",
+        "long_name": "Longitude",
     }
+    da.encoding.clear()
+    da.encoding = {"_FillValue": None, "dtype": "float64"}
     ds["lon"] = da
     return ds
 
@@ -392,8 +458,32 @@ def convert_units(
         dims=da.dims,
         name=da.name,
         attrs=new_attrs,
-        encoding=da.encoding,  # preserve encoding (you may want to clear dtype and calendar)
+        # encoding=da.encoding,  # preserve encoding (you may want to clear dtype and calendar)
     )
+
+
+# default CF _FillValue options (see https://docs.unidata.ucar.edu/netcdf-c/current/file_format_specifications.html#classic_format_spec)
+_FILL_VALUES = {
+    np.dtype("S1"): np.bytes_(b"\x00"),  # char
+    np.int8: np.int8(-127),  # byte
+    np.int16: np.int16(-32767),  # short
+    np.int32: np.int32(2147483647),  # int
+    np.float32: np.float32(1.0e20),  # float
+    np.float64: np.float64(1.0e20),  # double
+}
+
+
+def _sanitize_units(u: str) -> str:
+    """
+    Turn things like "gC/m^2/day" into "gC m-2 day-1",
+    which cf_units will happily parse.
+    """
+    # 1) squared denominators: /foo^2 → " foo-2"
+    u = re.sub(r"/([A-Za-z]+)\^?2", r" \1-2", u)
+    # 2) any remaining single denominators: /foo → " foo-1"
+    u = re.sub(r"/([A-Za-z]+)", r" \1-1", u)
+    # 3) strip any stray carets
+    return u.replace("^", "")
 
 
 def set_var_attrs(
@@ -403,24 +493,49 @@ def set_var_attrs(
     cmip6_standard_name: str,
     cmip6_long_name: str,
     *,
+    target_dtype: str | np.dtype | None = None,
     convert: bool = False,
 ) -> xr.Dataset:
     """
-    Ensure ds[var] has CF‐compliant attrs:
-      - Optionally convert from its existing units to cmip6_units
-      - Warn (but do not fail) if units don’t match and convert=False;
-        in that case, keep the original units.
-      - Then set units (either converted or original), standard_name, long_name
+    Ensure ds[var] has CF-compliant attrs and correct _FillValue:
+      - Optionally convert units
+      - Strip any “[unit]” from the long_name
+      - Set units, standard_name, long_name
+      - Optionally cast to target_dtype
+      - Pick and set the default _FillValue based on final dtype
+      - For ints/bytes/shorts: replace existing missing_value markers
+        with the CF fill and then write _FillValue into encoding
     """
     if var not in ds:
         raise KeyError(f"Variable '{var}' not found in dataset.")
     da = ds[var]
 
-    current_units = da.attrs.get("units")
+    # capture existing missing_value marker
+    mv = da.encoding.get("missing_value", da.attrs.get("missing_value", None))
+
+    # optional unit conversion
+    # ——————— normalize any “unit”/“units” attr ———————
+    # look for a key that lowercased is “unit” or “units”
+    units_key = next((k for k in da.attrs if k.lower() in ("unit", "units")), None)
+    if units_key:
+        # pop it out under the exact name “units”
+        da.attrs["units"] = da.attrs.pop(units_key)
+
+        # sanitize any funky notation so cf_units can parse it
+        orig = da.attrs["units"]
+        sanitized_unit = _sanitize_units(orig)
+        if sanitized_unit != orig:
+            da.attrs["units"] = sanitized_unit
+
+    current_units = da.attrs.get("units", None)
     effective_units = cmip6_units
 
+    # only convert if there *was* an original units and it differs
     if current_units is not None and current_units != cmip6_units:
         if convert:
+            warnings.warn(
+                f"Converting {var} units from {current_units} to {cmip6_units}"
+            )
             da = convert_units(da, cmip6_units)
         else:
             warnings.warn(
@@ -429,16 +544,95 @@ def set_var_attrs(
             )
             effective_units = current_units
 
-    # now safe to overwrite attrs
-    da.assign_attrs(
+    # remove "[unit]" from long name; could be confusing if it doesn't match actual unit
+    clean_long_name = re.sub(r"\s*\[[^\]]+\]", "", cmip6_long_name).strip()
+
+    # assign CF attrs
+    da = da.assign_attrs(
         {
             "units": effective_units,
             "standard_name": cmip6_standard_name,
-            "long_name": cmip6_long_name,
+            "long_name": clean_long_name,
         }
     )
 
+    # set final dtype
+    final_dt = np.dtype(target_dtype) if target_dtype is not None else da.dtype
+    da = da.astype(final_dt)
+
+    # determine final dtype and CF _FillValue
+    final_dt = np.dtype(target_dtype) if target_dtype is not None else da.dtype
+    fill = _FILL_VALUES.get(final_dt, None)
+    if fill is None:
+        # fallback by kind and size
+        if final_dt.kind in ("i", "u"):
+            fill = _FILL_VALUES.get(
+                {1: np.int8, 2: np.int16, 4: np.int32}[final_dt.itemsize]
+            )
+        elif final_dt.kind == "f":
+            fill = _FILL_VALUES.get({4: np.float32, 8: np.float64}[final_dt.itemsize])
+        elif final_dt.kind == "S":
+            fill = _FILL_VALUES[np.dtype("S1")]
+
+    # handle data and encoding based on dtype
+    if np.issubdtype(final_dt, np.floating):
+        # Floats: leave NaNs, just set encoding
+        da.encoding["_FillValue"] = fill
+    else:
+        # Ints/bytes: replace NaNs and old markers, cast to final_dtype
+        if np.issubdtype(da.dtype, np.floating):
+            da = da.fillna(fill)
+        if mv is not None:
+            da = da.where(da != mv, fill)
+        da = da.astype(final_dt)
+        da.encoding["_FillValue"] = fill
+
+    # remove any old missing_value attributes; not required by CF anymore
+    da.attrs.pop("missing_value", None)
+    da.encoding.pop("missing_value", None)
+
+    # reassign back to dataset
     ds[var] = da
+    return ds
+
+
+def set_coord_bounds(ds: xr.Dataset, coord: str) -> xr.Dataset:
+    """
+    Compute and attach 1D cell boundaries for `coord` using a 'bnds'=2
+    dimension. Ensures float32 output, no _FillValue, and correct ordering.
+    """
+    # make sure we have a 'bnds' dimension of length 2
+    if "nv" in ds.dims:
+        ds = ds.rename_dims({"nv": "bnds"})
+
+    # cast and grab values
+    ds[coord] = ds[coord].astype(np.float64)
+    vals = ds[coord].values
+    n = vals.shape[0]
+
+    # build midpoint array
+    b = np.empty((n, 2), dtype=np.float64)
+    # interior midpoints
+    b[1:-1, 0] = 0.5 * (vals[:-2] + vals[1:-1])
+    b[1:-1, 1] = 0.5 * (vals[1:-1] + vals[2:])
+    # edge extrapolation
+    d0 = vals[1] - vals[0]
+    dn = vals[-1] - vals[-2]
+    b[0] = [vals[0] - d0 / 2, vals[0] + d0 / 2]
+    b[-1] = [vals[-1] - dn / 2, vals[-1] + dn / 2]
+
+    # sort so column 0 is lower bound, column 1 is upper
+    b = np.sort(b, axis=1)
+
+    # assign into the dataset
+    name = f"{coord}_bnds"
+    ds[name] = ((coord, "bnds"), b)
+
+    # reset encoding and attrs
+    ds[name].encoding = {"_FillValue": None, "dtype": "float64"}
+    ds[coord].attrs["bounds"] = name
+    ds[coord].encoding = {"_FillValue": None, "dtype": "float64"}
+
     return ds
 
 
@@ -454,6 +648,7 @@ def gen_trackingid() -> str:
     return "hdl:21.14102/" + str(uuid.uuid4())
 
 
+# deprecated
 def add_time_bounds2(ds: xr.Dataset) -> xr.Dataset:
     """
     Adds a time_bounds variable to the xarray dataset according to CF conventions.
@@ -493,6 +688,7 @@ def add_time_bounds2(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
+# deprecated
 def fix_time(ds: xr.Dataset) -> xr.DataArray:
     """
     Ensure the xarray dataset's time attributes are formatted according to CF-Conventions.
@@ -523,6 +719,7 @@ def fix_time(ds: xr.Dataset) -> xr.DataArray:
     return ds
 
 
+# deprecated
 def add_time_bounds(ds: xr.Dataset) -> xr.Dataset:
     """
     Add bounds to the time coordinate using numpy.datetime64 format.
@@ -539,6 +736,7 @@ def add_time_bounds(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
+# deprecated
 def add_time_bounds_monthly(ds: xr.Dataset) -> xr.Dataset:
     """
     Add CF-compliant monthly time bounds and preserve existing mid-month time values.
@@ -866,7 +1064,7 @@ def set_ods_global_attrs(
     if missing:
         raise ValueError(f"Missing required global attributes: {', '.join(missing)}")
 
-    ds.attrs.update(attrs)
+    ds.attrs = attrs
 
     return ds
 

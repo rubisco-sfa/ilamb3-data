@@ -51,7 +51,7 @@ ds["ohc_error"] = (ds["ohc_error"] * 10).astype(np.float64)
 ds = set_var_attrs(
     ds,
     var="ohc",
-    cmip6_units="J",
+    cmip6_units="ZJ",
     cmip6_standard_name="ocean_heat_content_anomaly",
     cmip6_long_name="global annual ocean (0-2000m depth) heat content anomaly (WOA09 1955-2006 baseline)",
     ancillary_variables="ocean_heat_content_anomaly standard_error",
@@ -63,7 +63,7 @@ ds = set_var_attrs(
 # Set ohc_error attrs
 ds["ohc_error"].attrs = {
     "standard_name": "ocean_heat_content_anomaly standard_error",
-    "units": "J",
+    "units": "ZJ",
 }
 ds["ohc_error"].encoding = {"_FillValue": None}
 
@@ -120,6 +120,21 @@ ds = set_depth_attrs(
 )
 ds = set_coord_bounds(ds, "lat")
 ds = set_coord_bounds(ds, "lon")
+
+# global temporal mean of ohcJm2
+anomaly_per_cell = ohcJm2 * cell_area  # per-cell anomaly
+global_ohc_J = anomaly_per_cell.sum(dim=("lat", "lon"))  # global ocean anomaly
+global_ohc_ZJ = global_ohc_J * 1e-21  # J to ZJ
+ohc_climatology_ZJ = global_ohc_ZJ.mean(
+    dim=("time", "depth")
+)  # mean of time/depth (there's only 1 depth)
+
+# temporal mean of ohc
+ohc_zj = ds["ohc"] * 1e21
+mean_ohc = ohc_zj.mean()
+
+print(f"Global OHC (from ohcJm2): {ohc_climatology_ZJ:.3e} ZJ")
+print(f"Global OHC (from ohc)   : {mean_ohc:.3e} ZJ")
 
 # Create one ds per variable
 base_vars = [

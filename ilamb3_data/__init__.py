@@ -507,6 +507,61 @@ def set_lon_attrs(ds: xr.Dataset) -> xr.Dataset:
     return ds
 
 
+def set_depth_attrs(
+    ds: xr.Dataset,
+    bounds: np.ndarray,
+    units: str,
+    positive: str,
+    long_name: str,
+    *,
+    standard_name: str = "depth",
+    axis: str = "Z",
+    depth_dim: str = "depth",
+    bnds_dim: str = "bnds",
+) -> xr.Dataset:
+    """
+    Ensure the xarray dataset's depth attributes are formatted according to CF-Conventions.
+    """
+    assert "depth" in ds
+
+    # set up
+    bounds_name = f"{depth_dim}_bnds"
+    midpoints = bounds.mean(axis=1)
+    ds = ds.assign_coords({depth_dim: midpoints})
+
+    # update depth variable attrs and encoding
+    depth_da = ds[depth_dim]
+    depth_da.attrs.update(
+        {
+            "units": units,
+            "positive": positive,
+            "axis": axis,
+            "standard_name": standard_name,
+            "long_name": long_name,
+            "bounds": bounds_name,
+        }
+    )
+    depth_da.encoding.clear()
+    depth_da.encoding = {"_FillValue": None, "dtype": "float32"}
+    ds[depth_dim] = depth_da
+
+    # create depth bounds data array
+    depth_bounds = xr.DataArray(
+        data=bounds.astype(np.float32),
+        dims=(depth_dim, bnds_dim),
+        coords={depth_dim: ds[depth_dim]},
+        name=bounds_name,
+    )
+
+    # assign bounds
+    depth_bounds.attrs.clear()
+    depth_bounds.encoding.clear()
+    depth_bounds.encoding = {"_FillValue": None, "dtype": "float32"}
+    ds[bounds_name] = depth_bounds
+
+    return ds
+
+
 def convert_units(
     da: xr.DataArray,
     target_units: str,
@@ -574,6 +629,8 @@ def set_var_attrs(
     cmip6_units: str,
     cmip6_standard_name: str,
     cmip6_long_name: str,
+    ancillary_variables: str | None = None,
+    cell_methods: str | None = None,
     *,
     target_dtype: str | np.dtype | None = None,
     convert: bool = False,
@@ -629,14 +686,21 @@ def set_var_attrs(
     # remove "[unit]" from long name; could be confusing if it doesn't match actual unit
     clean_long_name = re.sub(r"\s*\[[^\]]+\]", "", cmip6_long_name).strip()
 
-    # assign CF attrs
-    da = da.assign_attrs(
-        {
-            "units": effective_units,
-            "standard_name": cmip6_standard_name,
-            "long_name": clean_long_name,
-        }
-    )
+    # create CF attrs
+    attrs = {
+        "units": effective_units,
+        "standard_name": cmip6_standard_name,
+        "long_name": clean_long_name,
+    }
+
+    # assign ancillary variables attr if needed
+    if ancillary_variables is not None:
+        attrs["ancillary_variables"] = ancillary_variables
+    if cell_methods is not None:
+        attrs["cell_methods"] = cell_methods
+
+    # assign the attrs
+    da = da.assign_attrs(attrs)
 
     # set final dtype
     final_dt = np.dtype(target_dtype) if target_dtype is not None else da.dtype

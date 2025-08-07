@@ -174,7 +174,7 @@ for var in ["ohcJm2", "ohc"]:
         "title": f"{ohc_title if var == 'ohc' else ohc_jm2_title}",
         "grid": f"{'1x1 degree latitude x longitude' if var == 'ohcJm2' else 'global mean data'}",
         "grid_label": f"{'gm' if var == 'ohc' else 'gn'}",
-        "nominal_resolution": f"{'1x1 degree' if var == 'ohcJm2' else 'N/A'}",
+        "nominal_resolution": f"{'1x1 degree' if var == 'ohcJm2' else 'site'}",
     }
 
     # Set global attributes

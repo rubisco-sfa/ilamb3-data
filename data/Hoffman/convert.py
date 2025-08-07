@@ -109,7 +109,7 @@ for var in ["nbp", "fgco2"]:
         history=f"""
 {download_stamp}: downloaded {remote_source};
 {creation_stamp}: converted to obs4MIPs format""",
-        institution="University of California at Irvine and Oak Ridge National Laboratory",
+        institution="University of California at Irvine and Oak Ridge National Laboratory, USA",
         institution_id="UCI-ORNL",
         license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
         nominal_resolution="N/A",

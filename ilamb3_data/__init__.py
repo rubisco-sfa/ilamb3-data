@@ -531,16 +531,14 @@ def set_depth_attrs(
 
     # update depth variable attrs and encoding
     depth_da = ds[depth_dim]
-    depth_da.attrs.update(
-        {
-            "units": units,
-            "positive": positive,
-            "axis": axis,
-            "standard_name": standard_name,
-            "long_name": long_name,
-            "bounds": bounds_name,
-        }
-    )
+    depth_da.attrs = {
+        "units": units,
+        "positive": positive,
+        "axis": axis,
+        "standard_name": standard_name,
+        "long_name": long_name,
+        "bounds": bounds_name,
+    }
     depth_da.encoding.clear()
     depth_da.encoding = {"_FillValue": None, "dtype": "float32"}
     ds[depth_dim] = depth_da

@@ -55,7 +55,7 @@ ds = set_var_attrs(
     cmip6_standard_name="ocean_heat_content_anomaly",
     cmip6_long_name="global annual ocean (0-2000m depth) heat content anomaly (WOA09 1955-2006 baseline)",
     ancillary_variables="ocean_heat_content_anomaly standard_error",
-    cell_methods="time: mean",
+    cell_methods=None,
     target_dtype=np.float64,
     convert=False,
 )
@@ -102,7 +102,7 @@ ds = set_var_attrs(
     cmip6_standard_name="integral_wrt_depth_of_sea_water_potential_temperature_expressed_as_heat_content",
     cmip6_long_name="depth-integrated ocean heat content anomaly (WOA09 1955-2006 baseline) computed as the integral over depth of sea water (0-2000m) potential temperature",
     ancillary_variables=None,
-    cell_methods="area: mean depth: mean time: mean",
+    cell_methods="area: mean depth: mean time: mean",  # this came from the original dataset, so I'll keep it
     target_dtype=np.float32,
     convert=False,
 )
@@ -151,17 +151,28 @@ for var in ["ohcJm2", "ohc"]:
     # define output datasets
     if var == "ohcJm2":
         out_ds = ds[base_vars + [var]]
+        out_ds = out_ds.transpose("time", "depth", "lat", "lon", "bnds")
     else:
         out_ds = ds[base_vars + [var, "ohc_error"]]
-
-    out_ds = out_ds.transpose("time", "depth", "lat", "lon", "bnds")
+        out_ds = out_ds.drop_dims(["lat", "lon"])
+        orig_attrs, orig_encoding = (
+            out_ds["depth"].attrs.copy(),
+            out_ds["depth"].encoding.copy(),
+        )
+        # this resets the depth attrs/encoding
+        out_ds[[var, "ohc_error"]] = out_ds[[var, "ohc_error"]].expand_dims(
+            dim={"depth": ds["depth"]}
+        )
+        # so I have to set them again
+        out_ds["depth"].attrs, out_ds["depth"].encoding = orig_attrs, orig_encoding
+        out_ds = out_ds.transpose("time", "depth", "bnds")
 
     # Define varibable-dependant attributes
     ohc_title = "WOA23 global yearly mean ocean heat content (0-2000m) anomaly (WOA09 1955-2006 anomaly baseline) from in-situ profile data"
     ohc_jm2_title = "WOA23 depth-integrated ocean heat content anomaly (WOA09 1955-2006 baseline) computed as the integral over depth of sea water (0-2000m) potential temperature"
     dynamic_attrs = {
         "title": f"{ohc_title if var == 'ohc' else ohc_jm2_title}",
-        "grid": f"{'global, area-weighted, depth-integrated, time-mean value' if var == 'ohcJm2' else 'area-weighted, depth-averaged, time-mean field on a regular 1x1 degree lat-lon grid'}",
+        "grid": f"{'1x1 degree latitude x longitude' if var == 'ohcJm2' else 'global mean data'}",
         "grid_label": f"{'gm' if var == 'ohc' else 'gn'}",
         "nominal_resolution": f"{'1x1 degree' if var == 'ohcJm2' else 'N/A'}",
     }

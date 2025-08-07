@@ -85,6 +85,8 @@ ds = set_coord_bounds(ds, "lat")
 ds = set_coord_bounds(ds, "lon")
 ds = ds.sortby(["time", "lat", "lon"])
 
+print(ds.time.values)
+
 # Set global attributes and export
 for var in vars:
     # Create one ds per variable
@@ -108,7 +110,7 @@ for var in vars:
         doi="N/A",
         external_variables="N/A",
         frequency="mon",
-        grid="1x1 degree",
+        grid="1x1 degree latitude x longitude",
         grid_label="gn",
         has_auxdata="False",
         history=f"""

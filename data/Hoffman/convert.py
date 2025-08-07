@@ -47,6 +47,7 @@ ds = set_var_attrs(
     cmip6_units=fgco2_info["variable_units"],
     cmip6_standard_name=fgco2_info["cf_standard_name"],
     cmip6_long_name=fgco2_info["variable_long_name"],
+    ancillary_variables="fgco2_95ci",
     target_dtype=np.float32,
     convert=False,
 )
@@ -56,29 +57,22 @@ ds = set_var_attrs(
     cmip6_units=nbp_info["variable_units"],
     cmip6_standard_name=nbp_info["cf_standard_name"],
     cmip6_long_name=nbp_info["variable_long_name"],
+    ancillary_variables="nbp_95ci",
     target_dtype=np.float32,
     convert=False,
 )
 
-# Assign fgco2 ancillary variable
-ds.fgco2.attrs["ancillary_variables"] = "fgco2_bnds"
-ds.fgco2_bnds.attrs = {
-    "long_name": f"{ds.fgco2.attrs['standard_name']} 95_pct_confidence_interval"
-}
-ds.fgco2_bnds.encoding = {
-    "_FillValue": np.float32(1.0e20),  # CMOR default
-    "dtype": "float32",
-}
-
-# Assign nbp ancillary variable
-ds.nbp.attrs["ancillary_variables"] = "nbp_bnds"
-ds.nbp_bnds.attrs = {
-    "long_name": f"{ds.nbp.attrs['standard_name']} 95_pct_confidence_interval"
-}
-ds.nbp_bnds.encoding = {
-    "_FillValue": np.float32(1.0e20),  # CMOR default
-    "dtype": "float32",
-}
+# Assign ancillary variables
+ds = ds.rename({"fgco2_bnds": "fgco2_95pci"})
+ds.fgco2_95pci.attrs["long_name"] = (
+    f"{ds.fgco2.attrs['standard_name']} 95_pct_confidence_interval"
+)
+ds.fgco2_95pci.encoding = {"_FillValue": np.float32(1.0e20), "dtype": np.float32}
+ds = ds.rename({"nbp_bnds": "nbp_95pci"})
+ds.nbp_95pci.attrs["long_name"] = (
+    f"{ds.nbp.attrs['standard_name']} 95_pct_confidence_interval"
+)
+ds.nbp_95pci.encoding = {"_FillValue": np.float32(1.0e20), "dtype": np.float32}
 
 # Clean up attrs
 for var in ds.variables:
@@ -103,7 +97,7 @@ for var in ["nbp", "fgco2"]:
     out_ds = set_ods_global_attrs(
         out_ds,
         activity_id="obs4MIPs",
-        aux_variable_id=f"{var}_bnds",
+        aux_variable_id=f"{var}_95pci",
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
         contact="Forrest Hoffman (forrest@climatemodeling.org)",
         conventions="CF-1.12 ODS-2.5",
@@ -111,7 +105,6 @@ for var in ["nbp", "fgco2"]:
         dataset_contributor="Morgan Steckler",
         data_specs_version="2.5",
         doi="N/A",
-        external_variables="N/A",
         frequency="yr",
         grid="global mean data",
         grid_label="gm",
@@ -126,7 +119,7 @@ for var in ["nbp", "fgco2"]:
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/Hoffman/convert.py",
         product="derived",
         realm=dynamic_attrs["realm"],
-        references="Hoffman, Forrest M., James T. Randerson, Vivek K. Arora, Qing Bao, Patricia Cadule, Duoying Ji, Chris D. Jones, Michio Kawamiya, Samar Khatiwala, Keith Lindsay, Atsushi Obata, Elena Shevliakova, Katharina D. Six, Jerry F. Tjiputra, Evgeny M. Volodin, and Tongwen Wu, (2014) Causes and Implications of Persistent Atmospheric Carbon Dioxide Biases in Earth System Models. J. Geophys. Res. Biogeosci., 119(2):141-162. doi:10.1002/2013JG002381.",
+        references="Hoffman, Forrest M., James T. Randerson, Vivek K. Arora, Qing Bao, Patricia Cadule, Duoying Ji, Chris D. Jones, Michio Kawamiya, Samar Khatiwala, Keith Lindsay, Atsushi Obata, Elena Shevliakova, Katharina D. Six, Jerry F. Tjiputra, Evgeny M. Volodin, and Tongwen Wu, (2014) Causes and Implications of Persistent Atmospheric Carbon Dioxide Biases in Earth System Models. J. Geophys. Res. Biogeosci., 119(2):141-162. https://doi.org/10.1002/2013JG002381.",
         region=dynamic_attrs["region"],
         source="Annual land carbon storage change = (total anthropogenic CO2 emissions) - (atmospheric carbon storage change) - (ocean carbon storage change)",
         source_id="Hoffman-1-0",

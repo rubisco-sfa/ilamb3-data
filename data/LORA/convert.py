@@ -51,6 +51,7 @@ ds = set_var_attrs(
     cmip6_units=mrro_info["variable_units"],
     cmip6_standard_name=mrro_info["cf_standard_name"],
     cmip6_long_name=mrro_info["variable_long_name"],
+    ancillary_variables="mrro_stddev",
     target_dtype=np.float32,
     convert=True,
 )
@@ -58,11 +59,14 @@ ds = set_var_attrs(
 # Assign ancillary variables
 ds = ds.assign(mrro_stdev=(("time", "lat", "lon"), ds.mrro_sd.values))
 ds = ds.drop_vars(["mrro_sd"])
-ds.mrro.attrs["ancillary_variables"] = "mrro_stdev"
-ds.mrro_stdev.attrs["long_name"] = (
-    f"{ds.mrro.attrs['standard_name']} standard_deviation"
-)
-ds.mrro_stdev.encoding["_FillValue"] = np.float32(1.0e20)  # CMOR default
+ds.mrro_stdev.attrs = {
+    "long_name": f"{ds.mrro.attrs['standard_name']} standard_deviation",
+    "cell_methods": "area: standard_deviation",  # copied from source data
+}
+ds.mrro_stdev.encoding = {
+    "_FillValue": np.float32(1.0e20),  # CMOR default
+    "dtype": "float32",
+}
 
 # Clean up attrs
 ds = set_time_attrs(ds, bounds_frequency="M")
@@ -86,7 +90,7 @@ out_ds = set_ods_global_attrs(
     doi="10.25914/5b612e993d8ea",
     external_variables="N/A",
     frequency="mon",
-    grid="0.5x0.5 degree",
+    grid="0.5x0.5 degree latitude x longitude",
     grid_label="gn",
     has_auxdata="True",
     history=f"""

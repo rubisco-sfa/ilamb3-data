@@ -234,7 +234,6 @@ def create_netcdf(
     # open the .tif file
     ds = rxr.open_rasterio(input_path, band_as_variable=True, mask_and_scale=True)
     ds = ds.rename({"x": "lon", "y": "lat", "band_1": var})
-    ds = ds.drop_vars(["spatial_ref"])
 
     # create time dimension
     ds = ds.drop_vars(["spatial_ref"], errors="ignore")
@@ -243,6 +242,9 @@ def create_netcdf(
     ds = hf.set_lon_attrs(ds)
     ds = hf.set_coord_bounds(ds, "lat")
     ds = hf.set_coord_bounds(ds, "lon")
+
+    # ensure csoil has time dimension
+    ds[var] = ds[var].expand_dims(time=ds.sizes["time"]).assign_coords(time=ds["time"])
 
     # Set timestamps and tracking id
     download_stamp = hf.gen_utc_timestamp(Path(local_data).stat().st_mtime)

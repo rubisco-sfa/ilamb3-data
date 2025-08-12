@@ -2,10 +2,9 @@ import datetime
 import os
 import sqlite3
 import subprocess
-import time
 import warnings
+from pathlib import Path
 
-import cftime as cf
 import numpy as np
 import pandas as pd
 import rioxarray as rxr
@@ -13,42 +12,37 @@ import xarray as xr
 from dask.distributed import Client, LocalCluster
 from osgeo import gdal
 
-from ilamb3_data import biblatex_builder as bb
-from ilamb3_data import (
-    get_cmip6_variable_info,
-    set_lat_attrs,
-    set_lon_attrs,
-    set_ods_global_attributes,
-    set_time_attrs,
-)
+# Determine the parent directory (ILAMB-DATA)
+import ilamb3_data as hf
 
 #####################################################
-# set the parameters for this particular dataset
+# set parameters
 #####################################################
 
 # main parameters
-chunksize = 3000
-var = "cSoil"
-long_name = "carbon mass in soil pool"
-layers = ["D1", "D2", "D3", "D4", "D5", "D6", "D7"]
-pools = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]
-sdate = datetime.datetime(1960, 1, 1)
-edate = datetime.datetime(2022, 1, 1)
+VAR = "cSoil"
+# VAR = "cSoilAbove1m"
+LAYERS = ["D1", "D2", "D3", "D4", "D5", "D6", "D7"]  # cSoil
+# LAYERS = ["D1", "D2", "D3", "D4", "D5"]  # cSoilAbove1m
+POOLS = [1, 2, 3, 4, 5, 6, 7, 8, 9, 10, 11, 12]  # soil types
+SDATE = datetime.datetime(1960, 1, 1)
+EDATE = datetime.datetime(2022, 1, 1)
 
 # dask parameters -- adjust these to fit your computer's capabilities
 # chatgpt can optimize n_workers, n_threads, and mem_limit if you provide your computer specs!
-n_workers = 20
-n_threads = 1
-mem_limit = "3.5GB"
+CHUNKSIZE = 3000
+N_WORKERS = 4
+N_THREADS = 2
+MEM_LIMIT = "16GB"
 
 # paths to files
-remote_rast = (
+REMOTE_RAST = (
     "https://s3.eu-west-1.amazonaws.com/data.gaezdev.aws.fao.org/HWSD/HWSD2_RASTER.zip"
 )
-local_rast = "HWSD2_RASTER/HWSD2.bil"
-remote_data = "https://www.isric.org/sites/default/files/HWSD2.sqlite"
-local_data = "HWSD2.sqlite"
-github_path = "https://github.com/rubisco-sfa/ILAMB-Data/blob/master/HWSD2/convert.py"
+LOCAL_RAST = "_raw/HWSD2_RASTER/HWSD2.bil"
+REMOTE_DATA = "https://www.isric.org/sites/default/files/HWSD2.sqlite"
+LOCAL_DATA = "_raw/HWSD2.sqlite"
+GITHUB_PATH = "https://github.com/rubisco-sfa/ILAMB-Data/blob/master/HWSD2/convert.py"
 
 # suppress specific warnings
 warnings.filterwarnings("ignore", message="invalid value encountered in cast")
@@ -61,22 +55,33 @@ gdal.DontUseExceptions()
 
 # 1. download raster and sql database to connect to raster
 def download_data(remote_rast, remote_data):
-    # check for raster directory
-    rast_dir = os.path.splitext(os.path.basename(remote_rast))[0]
-    if not os.path.isdir(rast_dir) or not any(
-        fname.endswith(".bil") for fname in os.listdir(rast_dir)
-    ):
-        subprocess.run(["mkdir", rast_dir])
-        subprocess.run(["curl", "-L", remote_rast, "-o", os.path.basename(remote_rast)])
-        subprocess.run(["unzip", os.path.basename(remote_rast), "-d", rast_dir])
-    # check for database
-    sql_database = os.path.basename(remote_data)
-    if not os.path.isfile(sql_database):
-        subprocess.run(["curl", "-L", remote_data, "-o", sql_database])
+    raw_dir = "_raw"
+    os.makedirs(raw_dir, exist_ok=True)
+
+    # --- raster ZIP -> _raw/HWSD2_RASTER/ ---
+    rast_dir_name = os.path.splitext(os.path.basename(remote_rast))[0]  # "HWSD2_RASTER"
+    rast_dir = os.path.join(raw_dir, rast_dir_name)  # "_raw/HWSD2_RASTER"
+    os.makedirs(rast_dir, exist_ok=True)
+
+    # already have a .bil in the target dir?
+    have_bil = any(fname.endswith(".bil") for fname in os.listdir(rast_dir))
+    if not have_bil:
+        zip_path = os.path.join(
+            raw_dir, os.path.basename(remote_rast)
+        )  # "_raw/HWSD2_RASTER.zip"
+        subprocess.run(["curl", "-L", remote_rast, "-o", zip_path], check=True)
+        subprocess.run(["unzip", "-o", zip_path, "-d", rast_dir], check=True)
     else:
-        print(
-            f"Raster {rast_dir} and Database {sql_database} are already downloaded to current directory."
-        )
+        print(f"Raster already present in {rast_dir}")
+
+    # --- sqlite -> _raw/HWSD2.sqlite ---
+    sql_database = os.path.join(
+        raw_dir, os.path.basename(remote_data)
+    )  # "_raw/HWSD2.sqlite"
+    if not os.path.isfile(sql_database):
+        subprocess.run(["curl", "-L", remote_data, "-o", sql_database], check=True)
+    else:
+        print(f"Database already present: {sql_database}")
 
 
 # 2. initialize the dask multiprocessing client; the link can be used to track worker progress
@@ -113,13 +118,15 @@ def load_layer_table(db_path, table_name):
 
 
 # 5(a). function to calculate carbon stock
-def calculate_stock(df, depth, bulk_density_g_cm3, cf, organic_carbon):
+def calculate_stock(
+    df, top_depth, bottom_depth, bulk_density_g_cm3, cf, organic_carbon
+):
+    thickness_cm = df[bottom_depth] - df[top_depth]
     df["stock"] = (
-        df[bulk_density_g_cm3]
+        (df[bulk_density_g_cm3] * 1000)  # g to kg
         * (1 - df[cf] / 100)
-        * df[depth]
-        * 0.01
-        * df[organic_carbon]
+        * (thickness_cm * 0.01)  # cm to meter
+        * (df[organic_carbon] / 100)
     )
     return df["stock"]
 
@@ -152,11 +159,13 @@ def process_layers(layer_df, layers, pools, var):
         df = df[df["SEQUENCE"].isin(pools)]
         for attr in ["ORG_CARBON", "BULK", "SHARE"]:
             df[attr] = df[attr].where(df[attr] > 0, np.nan)
-        df[var] = calculate_stock(df, "BOTDEP", "BULK", "COARSE", "ORG_CARBON")
+        df[var] = calculate_stock(
+            df, "TOPDEP", "BOTDEP", "BULK", "COARSE", "ORG_CARBON"
+        )
         grouped = (
             df.groupby("HWSD2_SMU_ID")
             .apply(
-                lambda x: pd.Series({var: weighted_mean(x["ORG_CARBON"], x["SHARE"])}),
+                lambda x: pd.Series({var: weighted_mean(x["stock"], x["SHARE"])}),
                 include_groups=False,
             )
             .reset_index()
@@ -219,153 +228,129 @@ def resample_raster(input_path, output_path, xres, yres, interp, nan):
 
 
 # 10. create a netcdf of the 0.5deg resolution raster
-def create_netcdf(input_path, output_path, var, sdate, edate, long_name):
+def create_netcdf(
+    input_path, var, local_data, remote_data, sdate, edate, pools, layers
+):
     # open the .tif file
-    csoil = rxr.open_rasterio(input_path, band_as_variable=True, mask_and_scale=True)
-
-    # rename the bands
-    csoil = csoil.rename({"x": "lon", "y": "lat", "band_1": var})
+    ds = rxr.open_rasterio(input_path, band_as_variable=True, mask_and_scale=True)
+    ds = ds.rename({"x": "lon", "y": "lat", "band_1": var})
 
     # create time dimension
-    tb_arr = np.asarray(
-        [
-            [cf.DatetimeNoLeap(sdate.year, sdate.month, sdate.day)],
-            [cf.DatetimeNoLeap(edate.year, edate.month, edate.day)],
-        ]
-    ).T
-    tb_da = xr.DataArray(tb_arr, dims=("time", "nv"))
-    csoil = csoil.expand_dims(time=tb_da.mean(dim="nv"))
-    csoil["time_bounds"] = tb_da
+    ds = ds.drop_vars(["spatial_ref"], errors="ignore")
+    ds = hf.set_time_attrs(ds, sdate=sdate, edate=edate)
+    ds = hf.set_lat_attrs(ds)
+    ds = hf.set_lon_attrs(ds)
+    ds = hf.set_coord_bounds(ds, "lat")
+    ds = hf.set_coord_bounds(ds, "lon")
 
-    # set dimension attributes
-    csoil = set_time_attrs(csoil)
-    csoil = set_lat_attrs(csoil)
-    csoil = set_lon_attrs(csoil)
+    # ensure csoil has time dimension
+    ds[var] = ds[var].expand_dims(time=ds.sizes["time"]).assign_coords(time=ds["time"])
 
-    # populate information from CMIP6 variable information
-    info = get_cmip6_variable_info(var)
-    csoil[var].attrs["long_name"] = info["variable_long_name"]
-    csoil[var].attrs["units"] = "kg m-2"
+    # Set timestamps and tracking id
+    download_stamp = hf.gen_utc_timestamp(Path(local_data).stat().st_mtime)
+    creation_stamp = hf.gen_utc_timestamp()
+    today_stamp = datetime.datetime.now().strftime("%Y%m%d")
+    tracking_id = hf.gen_trackingid()
 
-    # create the global attributes
-    generate_stamp = time.strftime(
-        "%Y-%m-%d %H:%M:%S", time.localtime(os.path.getmtime(local_data))
+    # get variable attribute info via ESGF CMIP variable information
+    info = hf.get_cmip6_variable_info(var)
+
+    # set variable attributes
+    ds = hf.set_var_attrs(
+        ds,
+        var=var,
+        cmip6_units=info["variable_units"],
+        cmip6_standard_name=info["cf_standard_name"],
+        cmip6_long_name=info["variable_long_name"],
+        target_dtype=np.float32,
     )
 
-    # set up citation
-    citation = bb.generate_biblatex_techreport(
-        cite_key="Nachtergaele2023",
-        author=[
-            "Nachtergaele, Freddy",
-            "van Velthuizen, Harrij",
-            "Verelst, Luc",
-            "Wiberg, Dave",
-            "Henry, Matieu",
-            "Chiozza, Federica",
-            "Yigini, Yusuf",
-            "Aksoy, Ece",
-            "Batjes, Niels",
-            "Boateng, Enoch",
-            "Fischer, Günther",
-            "Jones, Arwyn",
-            "Montanarella, Luca",
-            "Shi, Xuezheng",
-            "Tramberend, Sylvia",
-        ],
-        title="Harmonized World Soil Database",
-        institution="Food and Agriculture Organization of the United Nations and International Institute for Applied Systems Analysis, Rome and Laxenburg",
-        year="2023",
-        number="2.0",
-    )
+    # create history variable
+    history = f"""
+{download_stamp}: downloaded source from {remote_data}
+{creation_stamp}: filtered data to soil dominance sequence(s) {pools}; where 1 is the dominant soil type
+{creation_stamp}: masked invalid negative organic_carbon_pct_wt and bulk_density_g_cm3 with np.nan
+{creation_stamp}: calculated cSoilLevels in kg m-2 for each level {layers}: (bulk_density_g_cm3 * 1000) * (1 - coarse_fragment_pct_vol / 100) * (thickness_cm * 0.01) * (organic_carbon_pct_wt / 100)
+{creation_stamp}: calculated {var} by getting the weighted mean of all pools in a level and summing {layers} cSoilLevels where levles are 0-20cm (D1), 20-40cm (D2), 40-60cm (D3), 60-80cm (D4), 80-100cm (D5), 100-150cm (D6), 150-200 cm (D7)
+{creation_stamp}: resampled to 0.5 degree resolution using mean
+{creation_stamp}: created CF-compliant metadata
+"""
 
-    csoil = set_ods_global_attributes(
-        ds=csoil,
+    # set the attributes
+    ds = hf.set_ods_global_attrs(
+        ds,
         activity_id="obs4MIPs",
+        aux_variable_id="N/A",
+        comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
         contact="Matieu Henry (Matieu.Henry@fao.org)",
         conventions="CF-1.12 ODS-2.5",
-        creation_date=generate_stamp,
-        dataset_contributor="Morgan Steckler (stecklermr@ornl.gov)",
+        creation_date=creation_stamp,
+        dataset_contributor="Morgan Steckler",
         data_specs_version="2.5",
-        external_variables="",
+        doi="N/A",
         frequency="fx",
-        grid="0.5x0.5 degree",
+        grid="0.5x0.5 degree latitude x longitude",
         grid_label="gn",
-        history=f"""
-{generate_stamp}: downloaded source from {remote_data}
-{generate_stamp}: filtered data to soil dominance sequence(s) {pools}; where 1 is the dominant soil type
-{generate_stamp}: masked invalid negative organic_carbon_pct_wt and bulk_density_g_cm3 with np.nan
-{generate_stamp}: calculated cSoilLevels in kg m-2 for each level {layers}: bulk_density_g_cm3 * 10 * (1 - coarse_fragment_pct_vol / 100) * bottom_depth_cm / 10 * organic_carbon_pct_wt / 100)
-{generate_stamp}: calculated {var} by getting the weighted mean of all pools in a level and summing {layers} cSoilLevels
-{generate_stamp}: resampled to 0.5 degree resolution using mean
-{generate_stamp}: created CF-compliant metadata
-{generate_stamp}: exact details on this process can be found at {github_path}""",
-        institution="Food and Agriculture Organization of the United Nations",
-        institution_id="FAO",
-        license="CC BY-NC-SA 3.0",
+        has_auxdata="False",
+        history=history,
+        institution="International Institute for Applied Systems Analysis, Laxenburg, Austria; Food and Agriculture Organization of the United Nations, Rome, Italy",
+        institution_id="IIASA-FAO",
+        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
         nominal_resolution="0.5x0.5 degree",
-        processing_code_location=github_path,
-        product="observations",
+        processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/HWSD2/convert.py",
+        product="derived",
         realm="land",
-        references=citation,
-        source="HWSD",
-        source_id="HWSD",
-        source_data_notes="",
-        source_data_retrieval_date=generate_stamp,
-        source_data_url=f"{remote_rast} {remote_data}",
-        source_label="",
-        source_type="insitu_gridded",
+        references="Nachtergaele, F. (Ed.),van Velthuizen, H.(Ed.), Verelst, L.(Ed.), Wiberg, D.(Ed.), Henry, M.(Ed.), Chiozza, F.(Ed.), Yigini, Y.(Ed.), Aksoy, E., Batjes, N., Boateng, E., Fischer, G., Jones, A., Montanarella, L., Shi, X., & Tramberend, S. (2023). Harmonized World Soil Database Version 2.0 (Technical Report). FAO & IIASA.",
+        region="global_land",
+        source="Harmonized international soil profiles from WISE30sec 2015 with 7 soil layers and expanded soil attributes",
+        source_id="HWSD-2-0",
+        source_data_retrieval_date=download_stamp,
+        source_data_url=f"{REMOTE_RAST}; {REMOTE_DATA}",
+        source_label="HWSD",
+        source_type="gridded_insitu",
         source_version_number="2.0",
         title="Harmonized World Soil Database version 2.0",
-        tracking_id="",
+        tracking_id=tracking_id,
         variable_id="cSoil",
-        variant_label="BE",
-        variant_info="",
+        variant_label="REF",
+        variant_info="CMORized product prepared by ILAMB and CMIP IPO",
+        version=f"v{today_stamp}",
     )
 
-    # clean up the dataset
-    csoil["lat"] = csoil["lat"].astype("float32")
-    csoil["lon"] = csoil["lon"].astype("float32")
-    csoil = csoil.drop_vars("spatial_ref")
-    csoil = csoil.reindex(lat=list(reversed(csoil.lat)))
-
     # export as netcdf
-    csoil.to_netcdf(output_path, format="NETCDF4", engine="netcdf4")
+    out_path = hf.create_output_filename(ds.attrs)
+    ds.to_netcdf(out_path, format="NETCDF4")
 
 
 # use all nine steps above to convert the data into a netcdf
 def main():
-    download_data(remote_rast, remote_data)
-
-    client = initialize_client(n_workers, n_threads, mem_limit)
-
-    rast = load_raster(local_rast, chunksize)
-
-    layer_df = load_layer_table(local_data, "HWSD2_LAYERS")
-
-    dfs = process_layers(layer_df, layers, pools, var)
-
-    total_df = combine_and_summarize(dfs, var)
-
-    rast = apply_mapping(rast, total_df, var)
-
-    output_path = save_raster(rast, var, layers, pools)
+    download_data(REMOTE_RAST, REMOTE_DATA)
+    client = initialize_client(N_WORKERS, N_THREADS, MEM_LIMIT)
+    rast = load_raster(LOCAL_RAST, CHUNKSIZE)
+    layer_df = load_layer_table(LOCAL_DATA, "HWSD2_LAYERS")
+    dfs = process_layers(layer_df, LAYERS, POOLS, VAR)
+    total_df = combine_and_summarize(dfs, VAR)
+    rast = apply_mapping(rast, total_df, VAR)
+    output_path = save_raster(rast, VAR, LAYERS, POOLS)
 
     resample_raster(
         output_path,
-        f"hwsd2_{var}_{layers[0]}-{layers[-1]}_seq{pools[0]}-{pools[-1]}_resamp.tif",
+        f"hwsd2_{VAR}_{LAYERS[0]}-{LAYERS[-1]}_seq{POOLS[0]}-{POOLS[-1]}_resamp.tif",
         0.5,
         0.5,
         "average",
-        0,
+        np.float32(1.0e20),
     )
 
     create_netcdf(
-        f"hwsd2_{var}_{layers[0]}-{layers[-1]}_seq{pools[0]}-{pools[-1]}_resamp.tif",
-        f"hwsd2_{var}.nc",
-        var,
-        sdate,
-        edate,
-        long_name,
+        f"hwsd2_{VAR}_{LAYERS[0]}-{LAYERS[-1]}_seq{POOLS[0]}-{POOLS[-1]}_resamp.tif",
+        VAR,
+        LOCAL_DATA,
+        REMOTE_DATA,
+        SDATE,
+        EDATE,
+        POOLS,
+        LAYERS,
     )
 
     client.close()

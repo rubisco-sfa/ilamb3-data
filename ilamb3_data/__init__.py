@@ -180,6 +180,19 @@ def generate_time_bounds_nparr(time_da, freq=None):
     """
     dates = time_da.values
     n = dates.size
+    if n == 0:
+        raise ValueError(
+            "time_da has length 0; you must provide some kind of time data as a data array"
+        )
+
+    # derive units/calendar from the first cftime value (robust; no reliance on encoding)
+    ref_date = dates[0]
+    try:
+        calendar = ref_date.calendar
+    except AttributeError:
+        # fallback if a plain datetime slipped through
+        calendar = "gregorian"
+    units = f"days since {ref_date.year:04d}-{ref_date.month:02d}-{ref_date.day:02d} {ref_date.hour:02d}:{ref_date.minute:02d}:{ref_date.second:02d}"
 
     # helper to rebuild cftime of same class
     def mk(dt, year, month, day, hour, minute, second, microsecond):
@@ -195,28 +208,24 @@ def generate_time_bounds_nparr(time_da, freq=None):
         )
 
     # infer freq if not provided
-    if freq is None:
-        units = time_da.encoding.get("units")
-        cal = time_da.encoding.get("calendar")
-        nums = cf.date2num(dates.tolist(), units, cal)
+    if freq is None and n >= 2:
+        nums = cf.date2num(dates.tolist(), units, calendar)
         diffs = np.diff(nums)
         med = float(np.median(diffs))
         if 364 < med < 366:
             freq = "A"
         elif 27 < med < 32:
             freq = "M"
-        elif 0.9 < med < 1.1:
-            freq = "D"
         elif 6.9 < med < 7.1:
             freq = "W"
+        elif 0.9 < med < 1.1:
+            freq = "D"
         else:
-            freq = None
+            raise ValueError(
+                "freq unable to be inferred; please provide specific freq value if not annual, monthly, weekly, or daily data"
+            )
 
-    # calendar attributes
-    units = time_da.encoding.get("units")
-    calendar = time_da.encoding.get("calendar")
-    bnds = []
-
+    # try period-based bounds if we have/derived a valid offset from freq
     if freq:
         try:
             offset = pd.tseries.frequencies.to_offset(freq)
@@ -224,24 +233,24 @@ def generate_time_bounds_nparr(time_da, freq=None):
             offset = None
 
         if offset is not None:
-            for dt in dates:
-                # convert to pandas Timestamp
-                ts = pd.Timestamp(
-                    dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second
-                )
-                lo_ts = ts.to_period(freq).to_timestamp()
-                # compute preliminary high
-                hi_temp = lo_ts + offset
-                # if this offset is an "End" type, make hi = start of next period
-                cls_name = offset.__class__.__name__
-                if cls_name.endswith("End"):
-                    begin_name = cls_name.replace("End", "Begin")
-                    begin_cls = getattr(pd.offsets, begin_name)
-                    hi_ts = lo_ts + begin_cls(1)
-                else:
-                    hi_ts = hi_temp
+            # vectorize to pandas time indices
+            ts = pd.DatetimeIndex(
+                [
+                    pd.Timestamp(
+                        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second
+                    )
+                    for dt in dates
+                ]
+            )
 
-                bnds.append(
+            # get period starts and next-period starts
+            p = ts.to_period(freq)
+            lo = p.start_time
+            hi = (p + 1).start_time  # start of next period
+
+            # build cftime bounds
+            bnds = np.array(
+                [
                     (
                         mk(
                             dt,
@@ -264,31 +273,18 @@ def generate_time_bounds_nparr(time_da, freq=None):
                             hi_ts.microsecond,
                         ),
                     )
-                )
-            if len(bnds) == n:
-                return np.array(bnds, dtype=object)
+                    for dt, lo_ts, hi_ts in zip(dates, lo, hi)
+                ],
+                dtype=object,
+            )
 
-    # fallback: half-interval midpoint
-    nums = cf.date2num(dates.tolist(), units, calendar)
-    diffs = np.diff(nums) / 2.0
-    lowers = nums - np.concatenate(([diffs[0]], diffs))
-    uppers = nums + np.concatenate((diffs, [diffs[-1]]))
-    bnds_nums = np.stack([lowers, uppers], axis=1)
-    bnds_dt = cf.num2date(bnds_nums.tolist(), units, calendar)
-    return np.array([tuple(x) for x in bnds_dt], dtype=object)
+            return bnds
 
-
-def _to_cftime_from_datetimeindex(
-    dt_index: pd.DatetimeIndex, calendar: str
-) -> xr.DataArray:
-    """Helper: convert a DatetimeIndex to cftime via units->num->date roundtrip to respect calendar."""
-    # Build a units string anchored to the first timestamp
-    ref = dt_index[0].to_pydatetime()
-    units = f"days since {ref:%Y-%m-%d %H:%M:%S}"
-    # Convert to numeric in 'standard' (datetime64) then to chosen calendar
-    nums = cf.date2num([d.to_pydatetime() for d in dt_index], units, "standard")
-    cfd = cf.num2date(nums.tolist(), units, calendar)
-    return xr.DataArray(cfd, dims=("time",), coords={"time": cfd}, name="time")
+    # otherwise, if no freq was provided or inferred
+    else:
+        raise ValueError(
+            "Frequnecy not provided or couldn't be determined. Please provide sdate/edate and/or valid freq string."
+        )
 
 
 def _infer_src_time_dtype(time_da):
@@ -307,6 +303,19 @@ def _infer_src_time_dtype(time_da):
         f"Cannot infer time dtype: first element is {type(first)}, dtype={vals.dtype}.  "
         "Expected cf.datetime objects ('cftime'), numpy.datetime64, or float32."
     )
+
+
+def _to_cftime_from_datetimeindex(
+    dt_index: pd.DatetimeIndex, calendar: str
+) -> xr.DataArray:
+    """Helper: convert a DatetimeIndex to cftime via units->num->date roundtrip to respect calendar."""
+    # Build a units string anchored to the first timestamp
+    ref = dt_index[0].to_pydatetime()
+    units = f"days since {ref:%Y-%m-%d %H:%M:%S}"
+    # Convert to numeric in 'standard' (datetime64) then to chosen calendar
+    nums = cf.date2num([d.to_pydatetime() for d in dt_index], units, "standard")
+    cfd = cf.num2date(nums.tolist(), units, calendar)
+    return xr.DataArray(cfd, dims=("time",), coords={"time": cfd}, name="time")
 
 
 def _to_cftime_from_floats(time_da: xr.DataArray, dst_calendar: str):
@@ -487,10 +496,6 @@ def set_time_attrs(
     new_time_da.encoding = {"dtype": "float64", "_FillValue": None}
     ds = ds.assign_coords(time=new_time_da)
 
-    # drop & regenerate bounds
-    if "time_bnds" in ds:
-        ds = ds.drop_vars("time_bnds")
-
     if created_time:
         # Explicit bounds from provided sdate/edate
         # Convert bounds to numeric under same units/calendar
@@ -503,7 +508,7 @@ def set_time_attrs(
         ds["time_bnds"].encoding = {"_FillValue": None}
 
     else:
-        # Use your existing bounds generator for multi-step time
+        # Use existing bounds generator for multi-step time
         bnds_arr = generate_time_bounds_nparr(time_cftime, bounds_frequency)
         bnds_nums = cf.date2num(bnds_arr.flatten().tolist(), units, new_calendar)
         bnds_nums = np.array(bnds_nums, dtype="float64").reshape(bnds_arr.shape)

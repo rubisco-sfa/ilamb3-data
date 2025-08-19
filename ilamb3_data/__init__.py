@@ -414,6 +414,8 @@ def set_time_attrs(
     3) Drop & regenerate time_bnds (with matching encoding)
     """
 
+    created_time = False
+
     if "time" not in ds.coords:
         if sdate is None or edate is None:
             raise ValueError(
@@ -839,6 +841,10 @@ def gen_utc_timestamp(time: float | None = None) -> str:
 
 def gen_trackingid() -> str:
     return "hdl:21.14102/" + str(uuid.uuid4())
+
+
+def standardize_dim_order(ds, order=("time", "depth", "lat", "lon", "bnds")):
+    return ds.transpose(*order, missing_dims="ignore")
 
 
 def set_cf_global_attributes(

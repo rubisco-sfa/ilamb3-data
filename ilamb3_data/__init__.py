@@ -24,12 +24,8 @@ from . import biblatex_builder
 
 def create_registry(registry_file: str) -> pooch.Pooch:
     """
-    Return the pooch ilamb reference data catalog.
-
-    Returns
-    -------
-    pooch.Pooch
-        The intake ilamb reference data catalog.
+    Given registry file, return the pooch ilamb reference data catalog.
+    Returns: The intake ilamb reference data catalog (pooch.Pooch)
     """
 
     registry = pooch.create(
@@ -124,17 +120,8 @@ def download_from_zenodo(record: dict):
 
 def create_output_filename(attrs: dict) -> str:
     """
-    Generate a NetCDF filename using required attributes and a time range.
-
-    Args:
-        attrs (dict): Dictionary of global attributes.
-        time_range (str): Time range string to embed in the filename.
-
-    Returns:
-        str: Formatted filename.
-
-    Raises:
-        ValueError: If any required attributes are missing from `attrs`.
+    Generate a NetCDF filename using required attribute dictionary
+    Returns: Formatted filename (str)
     """
     required_keys = [
         "activity_id",
@@ -160,131 +147,157 @@ def create_output_filename(attrs: dict) -> str:
 
 
 def get_cmip6_variable_info(variable_id: str) -> dict[str, str]:
-    """ """
+    """
+    Given a CMIP6 variable_id, return a dictionary of its standard_name, long_name, and units.
+    """
     df = ESGFCatalog().variable_info(variable_id)
-    return df.iloc[0].to_dict()
-
-
-def generate_time_bounds_nparr(time_da, freq=None):
-    """
-    Build CF-style time bounds for a 1D cftime-based time coord,
-    returning a NumPy array of shape (ntime, 2), dtype=object.
-
-    Parameters
-    ----------
-    time_da : xarray.DataArray
-      1D DataArray of cftime.Datetime* objects (time axis)
-    freq : str or None
-      pandas offset alias (e.g. "M", "A", "D", "2W").
-      If None, uses median spacing to infer (annual, monthly, daily, weekly).
-    """
-    dates = time_da.values
-    n = dates.size
-    if n == 0:
+    if variable_id not in df.index:
         raise ValueError(
-            "time_da has length 0; you must provide some kind of time data as a data array"
+            f"Variable ID '{variable_id}' not found in CMIP6 variable info."
+        )
+    return df.loc[variable_id].to_dict()
+
+
+def time_bounds_from_frequency(
+    freq: str, sdate: cf.datetime, edate: cf.datetime
+) -> np.ndarray:
+    """
+    Build CF-style time bounds [start, end) for a given frequency and start/end dates.
+    Returns: np.ndarray of shape (ntime, 2), dtype=object, with cftime.DatetimeGregorian.
+    """
+    if edate < sdate:
+        raise ValueError("edate must be >= sdate.")
+
+    # Convert cftime -> pandas Timestamp
+    def to_ts(dt):
+        return pd.Timestamp(
+            dt.year,
+            dt.month,
+            dt.day,
+            getattr(dt, "hour", 0),
+            getattr(dt, "minute", 0),
+            getattr(dt, "second", 0),
+            getattr(dt, "microsecond", 0),
         )
 
-    # derive units/calendar from the first cftime value (robust; no reliance on encoding)
-    ref_date = dates[0]
+    s_ts, e_ts = to_ts(sdate), to_ts(edate)
+
+    # Validate/normalize frequency
     try:
-        calendar = ref_date.calendar
-    except AttributeError:
-        # fallback if a plain datetime slipped through
-        calendar = "gregorian"
-    units = f"days since {ref_date.year:04d}-{ref_date.month:02d}-{ref_date.day:02d} {ref_date.hour:02d}:{ref_date.minute:02d}:{ref_date.second:02d}"
+        offset = pd.tseries.frequencies.to_offset(freq)
+    except ValueError as e:
+        raise ValueError(f"Invalid freq {freq!r}: {e}") from e
+    if offset is None:
+        raise ValueError(f"Invalid freq {freq!r}")
 
-    # helper to rebuild cftime of same class
-    def mk(dt, year, month, day, hour, minute, second, microsecond):
-        return dt.__class__(
-            year,
-            month,
-            day,
-            hour,
-            minute,
-            second,
-            microsecond,
-            has_year_zero=dt.has_year_zero,
+    # Periods covering [sdate, edate] (inclusive of both periods that contain them)
+    periods = pd.period_range(start=s_ts, end=e_ts, freq=freq)
+    if len(periods) == 0:
+        raise ValueError("No periods found for the given bounds and frequency.")
+
+    starts = periods.start_time
+    ends = (periods + 1).start_time  # ends[i] == starts[i+1]
+
+    # pandas Timestamp -> cftime.DatetimeGregorian
+    def ts_to_cf(ts):
+        return cf.DatetimeGregorian(
+            ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second, ts.microsecond
         )
 
-    # infer freq if not provided
-    if freq is None and n >= 2:
-        nums = cf.date2num(dates.tolist(), units, calendar)
-        diffs = np.diff(nums)
-        med = float(np.median(diffs))
-        if 364 < med < 366:
-            freq = "A"
-        elif 27 < med < 32:
-            freq = "M"
-        elif 6.9 < med < 7.1:
-            freq = "W"
-        elif 0.9 < med < 1.1:
-            freq = "D"
-        else:
-            raise ValueError(
-                "freq unable to be inferred; please provide specific freq value if not annual, monthly, weekly, or daily data"
-            )
+    bnds = np.array(
+        [(ts_to_cf(lo), ts_to_cf(hi)) for lo, hi in zip(starts, ends)], dtype=object
+    )
+    return bnds
 
-    # try period-based bounds if we have/derived a valid offset from freq
-    if freq:
-        try:
-            offset = pd.tseries.frequencies.to_offset(freq)
-        except ValueError:
-            offset = None
 
-        if offset is not None:
-            # vectorize to pandas time indices
-            ts = pd.DatetimeIndex(
-                [
-                    pd.Timestamp(
-                        dt.year, dt.month, dt.day, dt.hour, dt.minute, dt.second
-                    )
-                    for dt in dates
-                ]
-            )
+def climatology_bounds_from_frequency(
+    freq: str,
+    sdate: cf.datetime,
+    edate: cf.datetime,
+) -> np.ndarray:
+    """
+    Build CF-style climatology bounds [start, end) for a given frequency and start/end dates.
+    sdate and edate are the overall bounds of the climatology (e.g. 1955-01-01 to 2022-12-31).
+    freq is the frequency of the climatology (e.g. 'M' for monthly).
+    Returns: np.ndarray of shape (ntime, 2), dtype=object, with cftime.DatetimeGregorian.
+    Array looks like [[1988-01-01, 1988-02-01], [1988-02-01, 1988-03-01], ...]
+    Where 1988 is the midpoint year of the climatology period.
+    """
+    if edate < sdate:
+        raise ValueError("edate must be >= sdate.")
 
-            # get period starts and next-period starts
-            p = ts.to_period(freq)
-            lo = p.start_time
-            hi = (p + 1).start_time  # start of next period
+    # Determine the midpoint year of the climatology period
+    mid_year = sdate.year + (edate.year - sdate.year) // 2
 
-            # build cftime bounds
-            bnds = np.array(
-                [
-                    (
-                        mk(
-                            dt,
-                            lo_ts.year,
-                            lo_ts.month,
-                            lo_ts.day,
-                            lo_ts.hour,
-                            lo_ts.minute,
-                            lo_ts.second,
-                            lo_ts.microsecond,
-                        ),
-                        mk(
-                            dt,
-                            hi_ts.year,
-                            hi_ts.month,
-                            hi_ts.day,
-                            hi_ts.hour,
-                            hi_ts.minute,
-                            hi_ts.second,
-                            hi_ts.microsecond,
-                        ),
-                    )
-                    for dt, lo_ts, hi_ts in zip(dates, lo, hi)
-                ],
-                dtype=object,
-            )
+    # Convert cftime -> pandas Timestamp
+    def to_ts(dt):
+        return pd.Timestamp(
+            dt.year,
+            dt.month,
+            dt.day,
+            getattr(dt, "hour", 0),
+            getattr(dt, "minute", 0),
+            getattr(dt, "second", 0),
+            getattr(dt, "microsecond", 0),
+        )
 
-            return bnds
+    s_ts, e_ts = to_ts(sdate), to_ts(edate)
 
-    # otherwise, if no freq was provided or inferred
-    else:
+    # Validate/normalize frequency
+    try:
+        offset = pd.tseries.frequencies.to_offset(freq)
+    except ValueError as e:
+        raise ValueError(f"Invalid freq {freq!r}: {e}") from e
+    if offset is None:
+        raise ValueError(f"Invalid freq {freq!r}")
+
+    # Periods covering [sdate, edate] (inclusive of both periods that contain them)
+    periods = pd.period_range(start=s_ts, end=e_ts, freq=freq)
+    if len(periods) == 0:
+        raise ValueError("No periods found for the given bounds and frequency.")
+
+    starts = periods.start_time
+    ends = starts + offset  # half-open intervals: [start, start+offset)
+
+    # Replace the year in starts and ends with mid_year
+    starts = [pd.Timestamp(mid_year, ts.month, ts.day) for ts in starts]
+    ends = [pd.Timestamp(mid_year, ts.month, ts.day) for ts in ends]
+
+    # pandas Timestamp -> cftime.DatetimeGregorian
+    def ts_to_cf(ts):
+        return cf.DatetimeGregorian(
+            ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second, ts.microsecond
+        )
+
+    bnds = np.array(
+        [(ts_to_cf(lo), ts_to_cf(hi)) for lo, hi in zip(starts, ends)], dtype=object
+    )
+    return bnds
+
+
+def climatology_bounds_from_array(time_da: xr.DataArray, freq: str) -> np.ndarray:
+    """
+    Build CF-style time bounds [start, end) for a given DataArray of cftime.Datetime* objects.
+    If freq is None, infer the frequency from the time steps.
+    """
+    return None
+
+
+def time_bounds_from_array(time_da: xr.DataArray, freq: str) -> np.ndarray:
+    """
+    Build CF-style time bounds [start, end) for a given DataArray of cftime.Datetime* objects.
+    If freq is None, infer the frequency from the time steps.
+    Returns: np.ndarray of shape (ntime, 2), dtype=object, with cftime.DatetimeGregorian.
+    """
+    if not np.issubdtype(time_da.dtype, np.dtype(object)):
         raise ValueError(
-            "Frequnecy not provided or couldn't be determined. Please provide sdate/edate and/or valid freq string."
+            "time_da must be of dtype object with cftime.Datetime* values."
         )
+    if not all(isinstance(t, cf.datetime) for t in time_da.values):
+        raise ValueError("All values in time_da must be cftime.Datetime* objects.")
+    if freq is None:
+        raise ValueError("Parameter `freq` must be provided.")
+    return time_bounds_from_frequency(freq, time_da.values[0], time_da.values[-1])
 
 
 def _infer_src_time_dtype(time_da):
@@ -303,19 +316,6 @@ def _infer_src_time_dtype(time_da):
         f"Cannot infer time dtype: first element is {type(first)}, dtype={vals.dtype}.  "
         "Expected cf.datetime objects ('cftime'), numpy.datetime64, or float32."
     )
-
-
-def _to_cftime_from_datetimeindex(
-    dt_index: pd.DatetimeIndex, calendar: str
-) -> xr.DataArray:
-    """Helper: convert a DatetimeIndex to cftime via units->num->date roundtrip to respect calendar."""
-    # Build a units string anchored to the first timestamp
-    ref = dt_index[0].to_pydatetime()
-    units = f"days since {ref:%Y-%m-%d %H:%M:%S}"
-    # Convert to numeric in 'standard' (datetime64) then to chosen calendar
-    nums = cf.date2num([d.to_pydatetime() for d in dt_index], units, "standard")
-    cfd = cf.num2date(nums.tolist(), units, calendar)
-    return xr.DataArray(cfd, dims=("time",), coords={"time": cfd}, name="time")
 
 
 def _to_cftime_from_floats(time_da: xr.DataArray, dst_calendar: str):
@@ -401,125 +401,312 @@ def _to_cftime(time_da: xr.DataArray, calendar: str = "gregorian") -> xr.DataArr
     )
 
 
-def set_time_attrs(
+def build_time(
+    sdate: cf.datetime,
+    edate: cf.datetime,
+    freq: str,
+    ref_date: Optional[cf.datetime] = None,
+) -> xr.DataArray:
+    """
+    Build a CF-compliant time coordinate DataArray with attributes and encoding.
+    sdate = start date (cf.datetime)
+    edate = end date (cf.datetime)
+    freq = frequency string (e.g. 'A', 'M', 'D', 'W')
+    ref_date = reference date for units (cf.datetime). If None, use sdate.
+    dst_calendar = destination calendar (default "gregorian")
+    Returns: xr.DataArray with time values as float64, attrs, and encoding.
+    """
+
+    # validate inputs
+    if edate < sdate:
+        raise ValueError("edate must be >= sdate.")
+    if ref_date is None:
+        ref_date = sdate
+    if ref_date > sdate:
+        raise ValueError("ref_date must be <= sdate.")
+    if ref_date.calendar != sdate.calendar or ref_date.calendar != edate.calendar:
+        raise ValueError("sdate, edate, and ref_date must have the same calendar.")
+
+    # generate time bounds
+    bnds = time_bounds_from_frequency(freq, sdate, edate)  # (ntime, 2) cftime array
+
+    # generate time midpoints
+    mid_ts = [lo + (hi - lo) / 2 for lo, hi in bnds]
+
+    # ensure midpoints are gregorian/standard calendar
+    ref_str = f"{ref_date.year:04d}-{ref_date.month:02d}-{ref_date.day:02d} 00:00:00"
+    units = f"days since {ref_str}"
+    nums = cf.date2num(mid_ts, units, sdate.calendar)
+    mid_ts = cf.num2date(nums.tolist(), units, "gregorian")
+
+    # convert dates to numeric
+    nums = cf.date2num(mid_ts, units, "gregorian")
+    time_nums = np.array(nums, dtype="float64")
+    # build the new time coordinate
+    time_da = xr.DataArray(
+        data=time_nums,
+        dims=("time",),
+        coords={"time": time_nums},
+        attrs={
+            "axis": "T",
+            "standard_name": "time",
+            "long_name": "time",
+            "bounds": "time_bnds",
+            "units": units,
+            "calendar": "gregorian",
+        },
+        name="time",
+    )
+    time_da.encoding = {"dtype": "float64", "_FillValue": None}
+    return time_da
+
+
+def format_time(
     ds: xr.Dataset,
-    bounds_frequency=None,
-    dst_calendar="gregorian",
-    sdate=None,
-    edate=None,
+    freq: str,
+    ref_date: Optional[cf.datetime] = None,
 ) -> xr.Dataset:
     """
-    1) Recast ds.time into cftime.Datetime* under 'standard'
-    2) Stamp CF attributes + encoding (with _FillValue=None)
-    3) Drop & regenerate time_bnds (with matching encoding)
+    Given an xarray Dataset with a "time" coordinate, reformat the time coordinate
+    to be CF-compliant with proper attributes and encoding.
+    freq = frequency string (e.g. 'A', 'M', 'D', 'W')
+    ref_date = reference date for units (cf.datetime). If None, use first time value.
+    dst_calendar = destination calendar (default "gregorian")
+    Returns: xr.Dataset with reformatted time coordinate.
     """
 
-    created_time = False
-
     if "time" not in ds.coords:
-        if sdate is None or edate is None:
-            raise ValueError(
-                "Dataset has no 'time' coordinate. Provide sdate and edate to create one."
-            )
+        raise ValueError("Dataset has no 'time' coordinate.")
 
-        s_dt = pd.to_datetime(sdate)
-        e_dt = pd.to_datetime(edate)
-        if e_dt < s_dt:
-            raise ValueError("edate must be >= sdate.")
-
-        # midpoint
-        mid_dt = s_dt + (e_dt - s_dt) / 2
-
-        # build cftime arrays
-        time_cftime = _to_cftime_from_datetimeindex(
-            pd.DatetimeIndex([mid_dt]), dst_calendar
-        )
-        s_cf = _to_cftime_from_datetimeindex(
-            pd.DatetimeIndex([s_dt]), dst_calendar
-        ).values[0]
-        e_cf = _to_cftime_from_datetimeindex(
-            pd.DatetimeIndex([e_dt]), dst_calendar
-        ).values[0]
-
-        created_time = True
-
-    # extract time data
+    time_da = ds["time"].copy()
+    inferred_dtype = _infer_src_time_dtype(time_da)
+    if inferred_dtype == "cftime":
+        time_cftime = time_da.copy()
+    elif inferred_dtype == "datetime64":
+        time_cftime = _to_cftime(time_da, "gregorian")
+    elif inferred_dtype in ("float32", "float"):
+        time_cftime = _to_cftime_from_floats(time_da, "gregorian")
     else:
-        time_da = ds.coords["time"].copy()
-        inferred_dtype = _infer_src_time_dtype(time_da)
-
-        if inferred_dtype == "cftime":
-            time_cftime = time_da.copy()
-        elif inferred_dtype == "datetime64":
-            time_cftime = _to_cftime(time_da, calendar=dst_calendar)
-        elif inferred_dtype in ("float32", "float"):
-            time_cftime = _to_cftime_from_floats(time_da, dst_calendar)
-        else:
-            raise TypeError(
-                f"Inferred dtype is {inferred_dtype}, but it should be one of 'cftime', 'datetime64', or 'float32/float'."
-            )
-
-    # 2) build CF reference string and set units
-    ref = time_cftime.values[0]
-    ref_calendar = ref.calendar
-    time_cftime.attrs.pop("units", None)  # don't assume original units
-    ref_str = f"{ref.year:04d}-{ref.month:02d}-{ref.day:02d} {ref.hour:02d}:{ref.minute:02d}:{ref.second:02d}"
-    units = f"days since {ref_str}"
-
-    if ref_calendar != dst_calendar:
-        nums = cf.date2num(list(time_cftime.values), units, ref_calendar)
-        cf_dates = cf.num2date(nums.tolist(), units, dst_calendar)
-        time_cftime = xr.DataArray(
-            cf_dates, dims=("time",), coords={"time": cf_dates}, name="time"
+        raise TypeError(
+            f"Inferred dtype is {inferred_dtype}, but it should be one of 'cftime', 'datetime64', or 'float32/float'."
         )
 
-    new_calendar = time_cftime.values[0].calendar
+    # determine start and end dates
+    sdate, edate = time_cftime.values[0], time_cftime.values[-1]
+    if ref_date > sdate:
+        raise ValueError("ref_date must be <= the first date in ds.time.")
+    if ref_date.calendar != sdate.calendar or ref_date.calendar != edate.calendar:
+        raise ValueError("sdate, edate, and ref_date must have the same calendar.")
 
-    # define cf-compliant attributes
-    attrs = {
-        "axis": "T",
-        "standard_name": "time",
-        "long_name": "time",
-        "bounds": "time_bnds",
-    }
+    # build new time coordinate
+    new_time_da = build_time(sdate, edate, freq, ref_date)
 
-    # convert cftime objects to "days since...float64"
-    time_nums = cf.date2num(time_cftime.values.tolist(), units, new_calendar)
-    time_nums = np.array(time_nums, dtype="float64")
-
-    # build the new time coordinate
-    new_time_da = xr.DataArray(
-        data=time_nums,
-        dims=time_cftime.dims,
-        coords={"time": time_nums},
-        attrs={**attrs, "units": units, "calendar": new_calendar},
-        name=time_cftime.name,
-    )
-    new_time_da.encoding = {"dtype": "float64", "_FillValue": None}
+    # assign to dataset
     ds = ds.assign_coords(time=new_time_da)
 
-    if created_time:
-        # Explicit bounds from provided sdate/edate
-        # Convert bounds to numeric under same units/calendar
-        bnds_arr_cftime = np.array([[s_cf, e_cf]], dtype=object)
-        bnds_nums = cf.date2num(bnds_arr_cftime.flatten().tolist(), units, new_calendar)
-        bnds_nums = np.array(bnds_nums, dtype="float64").reshape(bnds_arr_cftime.shape)
-        ds["time_bnds"] = (("time", "bnds"), bnds_nums)
-        ds["time_bnds"].attrs.clear()
-        ds["time_bnds"].encoding.clear()
-        ds["time_bnds"].encoding = {"_FillValue": None}
-
-    else:
-        # Use existing bounds generator for multi-step time
-        bnds_arr = generate_time_bounds_nparr(time_cftime, bounds_frequency)
-        bnds_nums = cf.date2num(bnds_arr.flatten().tolist(), units, new_calendar)
-        bnds_nums = np.array(bnds_nums, dtype="float64").reshape(bnds_arr.shape)
-        ds["time_bnds"] = (("time", "bnds"), bnds_nums)
-        ds["time_bnds"].attrs.clear()
-        ds["time_bnds"].encoding.clear()
-        ds["time_bnds"].encoding = {"_FillValue": None}
-
+    # build bounds
+    bnds_arr = time_bounds_from_frequency(freq, sdate, edate)  # (ntime, 2) cftime array
+    nums = cf.date2num(
+        bnds_arr.flatten().tolist(), new_time_da.attrs["units"], "gregorian"
+    )
+    bnds_nums = np.array(nums, dtype="float64").reshape(bnds_arr.shape)
+    ds["time_bnds"] = (("time", "bnds"), bnds_nums)
+    ds["time_bnds"].attrs.clear()
+    ds["time_bnds"].encoding.clear()
+    ds["time_bnds"].encoding = {"_FillValue": None}
     return ds
+
+
+def set_time_attrs(
+    ds: xr.Dataset,
+    bounds_frequency: str,
+    ref_date: Optional[cf.datetime] = None,
+    build_time: bool = False,
+    sdate: Optional[cf.datetime] = None,
+    edate: Optional[cf.datetime] = None,
+) -> xr.Dataset:
+    """
+    If build_time is True, create a new time coordinate and time_bnds using sdate and edate.
+    If build_time is False, reformat the existing time coordinate to be CF-compliant.
+    If bounds_frequency is None, raise an error.
+    Returns: xr.Dataset with updated time coordinate and time_bnds.
+    """
+    # validate inputs
+    if bounds_frequency is None:
+        raise ValueError("bounds_frequency must be provided.")
+
+    # build time if requested
+    if build_time:
+        if sdate is None or edate is None:
+            raise ValueError("sdate and edate must be provided to build time.")
+        time_da = build_time(sdate, edate, bounds_frequency)
+        ds = ds.assign_coords(time=time_da)
+
+    # format time and create bounds using format_time
+    if ref_date is None:
+        ref_date = ds["time"].values[0]
+        warnings.warn(
+            "ref_date not provided; using first time value in dataset as ref_date."
+        )
+    ds = format_time(ds, bounds_frequency, ref_date)
+    return ds
+
+
+# def create_climatology(
+#     ds,
+#     clim_lower: cf.datetime,
+#     clim_upper: cf.datetime,
+#     bounds_frequency: str,
+#     dst_calendar="gregorian",
+# ) -> xr.Dataset:
+#     # determine the bounds frequency offset
+#     try:
+#         offset = to_offset(bounds_frequency)
+#     except ValueError as e:
+#         raise ValueError(f"Invalid bounds_frequency {bounds_frequency!r}: {e}") from e
+#     if offset is None:
+#         raise ValueError(f"Invalid bounds_frequency {bounds_frequency!r}")
+#     if offset.n != 1:
+#         raise ValueError(
+#             "bounds_frequency must be a single period, e.g. 'A', 'M', 'D', or 'W'"
+#         )
+#     if offset.delta is None:
+#         raise ValueError(
+#             "bounds_frequency must be a fixed period, e.g. 'A', 'M', 'D', or 'W'"
+#         )
+#     freq = offset.name  # e.g. "A", "M", "D", "W"
+
+#     # given lower and upper bounds and frequency, build time steps
+#     if freq in ("A", "AS"):
+#         # annual: step by years
+#         starts = pd.date_range(
+#             start=pd.Timestamp(clim_lower.year, 1, 1),
+#             end=pd.Timestamp(clim_upper.year, 12, 31),
+#             freq="YS",
+#         )
+#         ends = pd.date_range(
+#             start=pd.Timestamp(clim_lower.year, 12, 31),
+#             end=pd.Timestamp(clim_upper.year, 12, 31),
+#             freq="YS",
+#         )
+#         ends = ends + pd.DateOffset(years=1) - pd.Timedelta(days=1)
+#     elif freq in ("M", "MS"):
+#         # monthly: step by months
+#         starts = pd.date_range(
+#             start=pd.Timestamp(clim_lower.year, clim_lower.month, 1),
+#             end=pd.Timestamp(clim_upper.year, clim_upper.month, 1),
+#             freq="MS",
+#         )
+#         ends = pd.date_range(
+#             start=pd.Timestamp(clim_lower.year, clim_lower.month, 1),
+#             end=pd.Timestamp(clim_upper.year, clim_upper.month, 1),
+#             freq="MS",
+#         )
+#         ends = ends + pd.DateOffset(months=1) - pd.Timedelta(days=1)
+#     elif freq in ("D", "DS"):
+#         # daily: step by days
+#         starts = pd.date_range(
+#             start=pd.Timestamp(clim_lower.year, clim_lower.month, clim_lower.day),
+#             end=pd.Timestamp(clim_upper.year, clim_upper.month, clim_upper.day),
+#             freq="D",
+#         )
+#         ends = starts
+#     elif freq in ("W", "W-SUN", "W-MON", "W-TUE", "W-WED", "W-THU", "W-FRI", "W-SAT"):
+#         # weekly: step by weeks
+#         starts = pd.date_range(
+#             start=pd.Timestamp(clim_lower.year, clim_lower.month, clim_lower.day),
+#             end=pd.Timestamp(clim_upper.year, clim_upper.month, clim_upper.day),
+#             freq=freq,
+#         )
+#         ends = starts + pd.Timedelta(weeks=1) - pd.Timedelta(days=1)
+#     else:
+#         raise ValueError(
+#             "bounds_frequency must be one of 'A', 'M', 'D', or 'W' (with optional -<day>)"
+#         )
+#     if len(starts) == 0:
+#         raise ValueError(
+#             "No time steps could be generated with the provided bounds and frequency."
+#         )
+#     if len(starts) != len(ends):
+#         raise ValueError("Internal error: starts and ends have different lengths.")
+
+#     # given the starts and ends, build midpoints
+#     mid_ts = [start + (end - start) / 2 for start, end in zip(starts, ends)]
+#     time_days = np.array(
+#         [
+#             (time - pd.Timestamp(clim_lower.year, 1, 1)) / np.timedelta64(1, "D")
+#             for time in mid_ts
+#         ],
+#         dtype="float32",
+#     )
+#     time_cftime = _to_cftime_from_datetimeindex(pd.DatetimeIndex(mid_ts), dst_calendar)
+#     units = f"days since {clim_lower.year:04d}-01-01 00:00:00"
+
+#     if clim_lower.calendar != clim_upper.calendar:
+#         raise ValueError(
+#             "clim_lower and clim_upper must have the same calendar; got "
+#             f"{clim_lower.calendar} and {clim_upper.calendar}"
+#         )
+#     ref_calendar = clim_lower.calendar
+#     if ref_calendar != dst_calendar:
+#         nums = cf.date2num(list(time_cftime.values), units, ref_calendar)
+#         cf_dates = cf.num2date(nums.tolist(), units, dst_calendar)
+#         time_cftime = xr.DataArray(
+#             cf_dates, dims=("time",), coords={"time": cf_dates}, name="time"
+#         )
+#     new_calendar = time_cftime.values[0].calendar
+
+#     ################################################
+#     # 3) create time dimension
+#     ################################################
+#     # define cf-compliant attributes
+#     attrs = {
+#         "axis": "T",
+#         "standard_name": "time",
+#         "long_name": "time",
+#         "climatology": "climatology_bnds",
+#     }
+
+#     # convert cftime objects to "days since...float64"
+#     time_nums = cf.date2num(time_cftime.values.tolist(), units, new_calendar)
+#     time_nums = np.array(time_nums, dtype="float64")
+
+#     # build the new time coordinate
+#     new_time_da = xr.DataArray(
+#         data=time_nums,
+#         dims=time_cftime.dims,
+#         coords={"time": time_nums},
+#         attrs={**attrs, "units": units, "calendar": new_calendar},
+#         name=time_cftime.name,
+#     )
+#     new_time_da.encoding = {"dtype": "float64", "_FillValue": None}
+#     ds = ds.assign_coords(time=new_time_da)
+
+#     ################################################
+#     # 4) create bounds
+#     ################################################
+#     if created_time:
+#         # Explicit bounds from provided sdate/edate
+#         # Convert bounds to numeric under same units/calendar
+#         bnds_arr_cftime = np.array([[start_cf, end_cf]], dtype=object)
+#         bnds_nums = cf.date2num(bnds_arr_cftime.flatten().tolist(), units, new_calendar)
+#         bnds_nums = np.array(bnds_nums, dtype="float64").reshape(bnds_arr_cftime.shape)
+#         ds["climatology_bnds"] = (("time", "bnds"), bnds_nums)
+#         ds["climatology_bnds"].attrs.clear()
+#         ds["climatology_bnds"].encoding.clear()
+#         ds["climatology_bnds"].encoding = {"_FillValue": None}
+
+#     else:
+#         # Use existing bounds generator for multi-step time
+#         bnds_arr = generate_time_bounds_nparr(time_cftime, bounds_frequency)
+#         bnds_nums = cf.date2num(bnds_arr.flatten().tolist(), units, new_calendar)
+#         bnds_nums = np.array(bnds_nums, dtype="float64").reshape(bnds_arr.shape)
+#         ds["climatology_bnds"] = (("time", "bnds"), bnds_nums)
+#         ds["climatology_bnds"].attrs.clear()
+#         ds["climatology_bnds"].encoding.clear()
+#         ds["climatology_bnds"].encoding = {"_FillValue": None}
+
+#     return ds
 
 
 def set_lat_attrs(ds: xr.Dataset) -> xr.Dataset:
@@ -572,6 +759,10 @@ def set_depth_attrs(
 ) -> xr.Dataset:
     """
     Ensure the xarray dataset's depth attributes are formatted according to CF-Conventions.
+    bounds = 2D np.ndarray
+    units = e.g., "meters"
+    positive = direction; "down" or "up"
+    long_name = e.g., "depth of sea water"
     """
     assert "depth" in ds
 

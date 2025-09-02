@@ -85,8 +85,6 @@ ds = set_coord_bounds(ds, "lat")
 ds = set_coord_bounds(ds, "lon")
 ds = ds.sortby(["time", "lat", "lon"])
 
-print(ds.time.values)
-
 # Set global attributes and export
 for var in vars:
     # Create one ds per variable

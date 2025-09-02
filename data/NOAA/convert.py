@@ -44,8 +44,8 @@ ds = xr.open_dataset(source, decode_times=False, engine="netcdf4")
 # Set global ohc and ohc_error
 ds["ohc"] = ds["yearl_h22_WO"].rename("ohc")
 ds["ohc"] = (ds["ohc"] * 10).astype(np.float64)
-ds["ohc_error"] = ds["yearl_h22_se_WO"].rename("ohc_error")
-ds["ohc_error"] = (ds["ohc_error"] * 10).astype(np.float64)
+ds["ohc_se"] = ds["yearl_h22_se_WO"].rename("ohc_se")
+ds["ohc_se"] = (ds["ohc_se"] * 10).astype(np.float64)
 
 # Set ohc variable attrs
 ds = set_var_attrs(
@@ -54,18 +54,18 @@ ds = set_var_attrs(
     cmip6_units="ZJ",
     cmip6_standard_name="ocean_heat_content_anomaly",
     cmip6_long_name="global annual ocean (0-2000m depth) heat content anomaly (WOA09 1955-2006 baseline)",
-    ancillary_variables="ocean_heat_content_anomaly standard_error",
+    ancillary_variables="ohc_se",
     cell_methods=None,
     target_dtype=np.float64,
     convert=False,
 )
 
-# Set ohc_error attrs
-ds["ohc_error"].attrs = {
+# Set ancillary variables attrs
+ds["ohc_se"].attrs = {
     "standard_name": "ocean_heat_content_anomaly standard_error",
     "units": "ZJ",
 }
-ds["ohc_error"].encoding = {"_FillValue": None}
+ds["ohc_se"].encoding = {"_FillValue": None}
 
 ##########################################################################################
 # ohc_Jm2
@@ -153,14 +153,14 @@ for var in ["ohcJm2", "ohc"]:
         out_ds = ds[base_vars + [var]]
         out_ds = out_ds.transpose("time", "depth", "lat", "lon", "bnds")
     else:
-        out_ds = ds[base_vars + [var, "ohc_error"]]
+        out_ds = ds[base_vars + [var, "ohc_se"]]
         out_ds = out_ds.drop_dims(["lat", "lon"])
         orig_attrs, orig_encoding = (
             out_ds["depth"].attrs.copy(),
             out_ds["depth"].encoding.copy(),
         )
         # this resets the depth attrs/encoding
-        out_ds[[var, "ohc_error"]] = out_ds[[var, "ohc_error"]].expand_dims(
+        out_ds[[var, "ohc_se"]] = out_ds[[var, "ohc_se"]].expand_dims(
             dim={"depth": ds["depth"]}
         )
         # so I have to set them again
@@ -175,15 +175,17 @@ for var in ["ohcJm2", "ohc"]:
         "grid": f"{'1x1 degree latitude x longitude' if var == 'ohcJm2' else 'global mean data'}",
         "grid_label": f"{'gm' if var == 'ohc' else 'gn'}",
         "nominal_resolution": f"{'1x1 degree' if var == 'ohcJm2' else 'site'}",
+        "aux_variable_id": f"{'ohc_se' if var == 'ohc' else 'N/A'}",
+        "has_auxdata": f"{'True' if var == 'ohc' else 'False'}",
     }
 
     # Set global attributes
     out_ds = set_ods_global_attrs(
         out_ds,
         activity_id="obs4MIPs",
-        aux_variable_id="N/A",
+        aux_variable_id=dynamic_attrs["aux_variable_id"],
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
-        contact="ncei.info@noaa.gov",
+        contact="NOAA National Centers for Environmental Information (ncei.info@noaa.gov)",
         conventions="CF-1.12 ODS-2.5",
         creation_date=creation_stamp,
         dataset_contributor="Morgan Steckler",
@@ -193,7 +195,7 @@ for var in ["ohcJm2", "ohc"]:
         frequency="yr",
         grid=dynamic_attrs["grid"],
         grid_label=dynamic_attrs["grid_label"],
-        has_auxdata="False",
+        has_auxdata=dynamic_attrs["has_auxdata"],
         history=f"""
     {download_stamp}: downloaded {remote_source};
     {creation_stamp}: converted to obs4MIPs format""",
@@ -210,7 +212,7 @@ for var in ["ohcJm2", "ohc"]:
         source_id="WOA-23",
         source_data_retrieval_date=download_stamp,
         source_data_url=remote_source,
-        source_label="WOA09",
+        source_label="WOA",
         source_type="gridded_insitu",
         source_version_number="1.0",
         title=dynamic_attrs["title"],

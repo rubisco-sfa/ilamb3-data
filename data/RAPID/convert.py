@@ -37,7 +37,8 @@ today_stamp = datetime.now().strftime("%Y%m%d")
 tracking_id = gen_trackingid()
 
 # Load the dataset for adjustments
-ds = xr.open_dataset(source)
+time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
+ds = xr.open_dataset(source, decode_times=time_coder)
 
 # Create latitude dimension
 lat_da = xr.DataArray(
@@ -53,16 +54,15 @@ depth_da = xr.DataArray(
 
 # Assigning the coordinates to the dataset
 ds = ds.assign_coords({"lat": lat_da, "depth": depth_da})
-ds = set_time_attrs(ds, bounds_frequency="12H")
+print(len(ds.time))
 
 # Get monthly means instead of 12-hourly
-ds_decoded = xr.decode_cf(ds)
-monthly_ds = ds_decoded.resample(time="MS").mean(keep_attrs=True)
+ds = ds.resample(time="MS").mean(keep_attrs=True)
 
 # Select data var
-ds = monthly_ds.drop_vars(
-    [v for v in monthly_ds.data_vars if v != "moc_mar_hc10"]
-).rename_vars({"moc_mar_hc10": "msftmz"})
+ds = ds.drop_vars([v for v in ds.data_vars if v != "moc_mar_hc10"]).rename_vars(
+    {"moc_mar_hc10": "msftmz"}
+)
 
 # Assign coordinates to data var
 ds["msftmz"] = ds["msftmz"].expand_dims({"depth": ds["depth"], "lat": ds["lat"]})

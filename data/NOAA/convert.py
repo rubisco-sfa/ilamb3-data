@@ -1,9 +1,9 @@
 from datetime import datetime
 from pathlib import Path
 
-import cf_xarray  # noqa
-import cftime  # noqa
+import cftime as cf
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from ilamb3_data import (
@@ -18,6 +18,7 @@ from ilamb3_data import (
     set_ods_global_attrs,
     set_time_attrs,
     set_var_attrs,
+    standardize_dim_order,
 )
 
 # Download source
@@ -37,6 +38,36 @@ tracking_id = gen_trackingid()
 # Load the dataset for adjustments
 ds = xr.open_dataset(source, decode_times=False, engine="netcdf4")
 
+# Convert "months since" to "days since" for cftime decoding
+time_units = ds["time"].attrs.get("units") or ds["time"].encoding.get("units")
+calendar = "standard"  # found using CLI `cdo -s sinfo <file>`
+origin_str = time_units.split("since", 1)[-1].strip()
+origin_ts = pd.Timestamp(origin_str)
+
+# Build new reference date string for cftime
+ref_cf = cf.DatetimeGregorian(
+    origin_ts.year,
+    origin_ts.month,
+    origin_ts.day,
+    origin_ts.hour,
+    origin_ts.minute,
+    origin_ts.second,
+    origin_ts.microsecond,
+)
+
+# Convert each value m (in months) to exact days since origin:
+time_days = [
+    int((origin_ts + pd.DateOffset(months=int(m)) - origin_ts).days)
+    for m in ds["time"].values
+]
+ds = ds.assign_coords(time=("time", time_days))
+ds["time"].attrs["units"] = f"days since {origin_str}"
+ds["time"].attrs["calendar"] = calendar
+
+# propery decode times
+time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
+ds = xr.decode_cf(ds, decode_times=time_coder)
+
 ##########################################################################################
 # ohc
 ##########################################################################################
@@ -44,8 +75,8 @@ ds = xr.open_dataset(source, decode_times=False, engine="netcdf4")
 # Set global ohc and ohc_error
 ds["ohc"] = ds["yearl_h22_WO"].rename("ohc")
 ds["ohc"] = (ds["ohc"] * 10).astype(np.float64)
-ds["ohc_error"] = ds["yearl_h22_se_WO"].rename("ohc_error")
-ds["ohc_error"] = (ds["ohc_error"] * 10).astype(np.float64)
+ds["ohc_se"] = ds["yearl_h22_se_WO"].rename("ohc_se")
+ds["ohc_se"] = (ds["ohc_se"] * 10).astype(np.float64)
 
 # Set ohc variable attrs
 ds = set_var_attrs(
@@ -54,18 +85,18 @@ ds = set_var_attrs(
     cmip6_units="ZJ",
     cmip6_standard_name="ocean_heat_content_anomaly",
     cmip6_long_name="global annual ocean (0-2000m depth) heat content anomaly (WOA09 1955-2006 baseline)",
-    ancillary_variables="ocean_heat_content_anomaly standard_error",
+    ancillary_variables="ohc_se",
     cell_methods=None,
     target_dtype=np.float64,
     convert=False,
 )
 
-# Set ohc_error attrs
-ds["ohc_error"].attrs = {
+# Set ancillary variables attrs
+ds["ohc_se"].attrs = {
     "standard_name": "ocean_heat_content_anomaly standard_error",
     "units": "ZJ",
 }
-ds["ohc_error"].encoding = {"_FillValue": None}
+ds["ohc_se"].encoding = {"_FillValue": None}
 
 ##########################################################################################
 # ohc_Jm2
@@ -130,9 +161,7 @@ ohc_climatology_ZJ = global_ohc_ZJ.mean(
 )  # mean of time/depth (there's only 1 depth)
 
 # temporal mean of ohc
-ohc_zj = ds["ohc"] * 1e21
-mean_ohc = ohc_zj.mean()
-
+mean_ohc = ds["ohc"].mean()
 print(f"Global OHC (from ohcJm2): {ohc_climatology_ZJ:.3e} ZJ")
 print(f"Global OHC (from ohc)   : {mean_ohc:.3e} ZJ")
 
@@ -151,21 +180,23 @@ for var in ["ohcJm2", "ohc"]:
     # define output datasets
     if var == "ohcJm2":
         out_ds = ds[base_vars + [var]]
-        out_ds = out_ds.transpose("time", "depth", "lat", "lon", "bnds")
+        out_ds = standardize_dim_order(out_ds)
+        out_ds["time"].encoding = {"_FillValue": None}
     else:
-        out_ds = ds[base_vars + [var, "ohc_error"]]
+        out_ds = ds[base_vars + [var, "ohc_se"]]
         out_ds = out_ds.drop_dims(["lat", "lon"])
         orig_attrs, orig_encoding = (
             out_ds["depth"].attrs.copy(),
             out_ds["depth"].encoding.copy(),
         )
         # this resets the depth attrs/encoding
-        out_ds[[var, "ohc_error"]] = out_ds[[var, "ohc_error"]].expand_dims(
+        out_ds[[var, "ohc_se"]] = out_ds[[var, "ohc_se"]].expand_dims(
             dim={"depth": ds["depth"]}
         )
         # so I have to set them again
         out_ds["depth"].attrs, out_ds["depth"].encoding = orig_attrs, orig_encoding
-        out_ds = out_ds.transpose("time", "depth", "bnds")
+        out_ds = standardize_dim_order(out_ds)
+        out_ds["time"].encoding = {"_FillValue": None}
 
     # Define varibable-dependant attributes
     ohc_title = "WOA23 global yearly mean ocean heat content (0-2000m) anomaly (WOA09 1955-2006 anomaly baseline) from in-situ profile data"
@@ -175,15 +206,17 @@ for var in ["ohcJm2", "ohc"]:
         "grid": f"{'1x1 degree latitude x longitude' if var == 'ohcJm2' else 'global mean data'}",
         "grid_label": f"{'gm' if var == 'ohc' else 'gn'}",
         "nominal_resolution": f"{'1x1 degree' if var == 'ohcJm2' else 'site'}",
+        "aux_variable_id": f"{'ohc_se' if var == 'ohc' else 'N/A'}",
+        "has_auxdata": f"{'True' if var == 'ohc' else 'False'}",
     }
 
     # Set global attributes
     out_ds = set_ods_global_attrs(
         out_ds,
         activity_id="obs4MIPs",
-        aux_variable_id="N/A",
+        aux_variable_id=dynamic_attrs["aux_variable_id"],
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
-        contact="ncei.info@noaa.gov",
+        contact="NOAA National Centers for Environmental Information (ncei.info@noaa.gov)",
         conventions="CF-1.12 ODS-2.5",
         creation_date=creation_stamp,
         dataset_contributor="Morgan Steckler",
@@ -193,7 +226,7 @@ for var in ["ohcJm2", "ohc"]:
         frequency="yr",
         grid=dynamic_attrs["grid"],
         grid_label=dynamic_attrs["grid_label"],
-        has_auxdata="False",
+        has_auxdata=dynamic_attrs["has_auxdata"],
         history=f"""
     {download_stamp}: downloaded {remote_source};
     {creation_stamp}: converted to obs4MIPs format""",
@@ -210,7 +243,7 @@ for var in ["ohcJm2", "ohc"]:
         source_id="WOA-23",
         source_data_retrieval_date=download_stamp,
         source_data_url=remote_source,
-        source_label="WOA09",
+        source_label="WOA",
         source_type="gridded_insitu",
         source_version_number="1.0",
         title=dynamic_attrs["title"],

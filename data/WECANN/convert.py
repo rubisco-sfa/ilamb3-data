@@ -17,6 +17,7 @@ from ilamb3_data import (
     set_ods_global_attrs,
     set_time_attrs,
     set_var_attrs,
+    standardize_dim_order,
 )
 
 # Download the data
@@ -83,9 +84,9 @@ ds = set_lat_attrs(ds)
 ds = set_lon_attrs(ds)
 ds = set_coord_bounds(ds, "lat")
 ds = set_coord_bounds(ds, "lon")
-ds = ds.sortby(["time", "lat", "lon"])
 
-print(ds.time.values)
+# Order + var selection
+ds = standardize_dim_order(ds)
 
 # Set global attributes and export
 for var in vars:
@@ -102,7 +103,7 @@ for var in vars:
         out_ds,
         activity_id="obs4MIPs",
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary",
-        contact="HAlemohammad@clarku.edu",
+        contact="Hamed Alemohammad (halemohammad@clarku.edu)",
         conventions="CF-1.12 ODS-2.5",
         creation_date=creation_stamp,
         dataset_contributor="Morgan Steckler",

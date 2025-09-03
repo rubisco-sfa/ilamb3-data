@@ -4,6 +4,7 @@
 from datetime import datetime
 from pathlib import Path
 
+import cftime as cf
 import numpy as np
 import xarray as xr
 
@@ -33,8 +34,9 @@ today_stamp = datetime.now().strftime("%Y%m%d")
 tracking_id = gen_trackingid()
 
 # Load the dataset for adjustments
-ds = xr.open_dataset(local_source).load()
-ds = set_time_attrs(ds, bounds_frequency="Y")
+time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
+ds = xr.open_dataset(local_source, decode_times=time_coder)
+ds = set_time_attrs(ds, bounds_frequency="Y", ref_date=cf.DatetimeNoLeap(1850, 1, 1))
 
 # Get attribute info for fgco2 and nbp
 fgco2_info = get_cmip6_variable_info("fgco2")
@@ -84,6 +86,7 @@ ds["fgco2"].attrs.pop("bounds", None)
 for var in ["nbp", "fgco2"]:
     # Create one ds per variable
     out_ds = ds.drop_vars([v for v in ds if (var not in v and "time" not in v)])
+    out_ds["time"].encoding = {"_FillValue": None}
 
     # Define varibable-dependant attributes
     dynamic_attrs = {

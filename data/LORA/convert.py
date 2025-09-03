@@ -16,6 +16,7 @@ from ilamb3_data import (
     set_ods_global_attrs,
     set_time_attrs,
     set_var_attrs,
+    standardize_dim_order,
 )
 
 # Download the data
@@ -39,7 +40,8 @@ today_stamp = datetime.now().strftime("%Y%m%d")
 tracking_id = gen_trackingid()
 
 # Load the dataset for adjustments
-ds = xr.open_mfdataset(local_sources, engine="netcdf4")
+time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
+ds = xr.open_mfdataset(local_sources, engine="netcdf4", decode_times=time_coder)
 
 # Get attribute info for mrro
 mrro_info = get_cmip6_variable_info("mrro")
@@ -64,7 +66,7 @@ ds.mrro_stdev.attrs = {
     "cell_methods": "area: standard_deviation",  # copied from source data
 }
 ds.mrro_stdev.encoding = {
-    "_FillValue": np.float32(1.0e20),  # CMOR default
+    "_FillValue": None,  # CMOR default
     "dtype": "float32",
 }
 
@@ -74,7 +76,7 @@ ds = set_lat_attrs(ds)
 ds = set_lon_attrs(ds)
 ds = set_coord_bounds(ds, "lat")
 ds = set_coord_bounds(ds, "lon")
-ds = ds.sortby(["time", "lat", "lon"])
+ds = standardize_dim_order(ds)
 
 # Set global attributes and export
 out_ds = set_ods_global_attrs(

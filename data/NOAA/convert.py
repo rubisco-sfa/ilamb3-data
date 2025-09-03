@@ -1,9 +1,9 @@
 from datetime import datetime
 from pathlib import Path
 
-import cf_xarray  # noqa
-import cftime  # noqa
+import cftime as cf
 import numpy as np
+import pandas as pd
 import xarray as xr
 
 from ilamb3_data import (
@@ -18,6 +18,7 @@ from ilamb3_data import (
     set_ods_global_attrs,
     set_time_attrs,
     set_var_attrs,
+    standardize_dim_order,
 )
 
 # Download source
@@ -36,6 +37,36 @@ tracking_id = gen_trackingid()
 
 # Load the dataset for adjustments
 ds = xr.open_dataset(source, decode_times=False, engine="netcdf4")
+
+# Convert "months since" to "days since" for cftime decoding
+time_units = ds["time"].attrs.get("units") or ds["time"].encoding.get("units")
+calendar = "standard"  # found using CLI `cdo -s sinfo <file>`
+origin_str = time_units.split("since", 1)[-1].strip()
+origin_ts = pd.Timestamp(origin_str)
+
+# Build new reference date string for cftime
+ref_cf = cf.DatetimeGregorian(
+    origin_ts.year,
+    origin_ts.month,
+    origin_ts.day,
+    origin_ts.hour,
+    origin_ts.minute,
+    origin_ts.second,
+    origin_ts.microsecond,
+)
+
+# Convert each value m (in months) to exact days since origin:
+time_days = [
+    int((origin_ts + pd.DateOffset(months=int(m)) - origin_ts).days)
+    for m in ds["time"].values
+]
+ds = ds.assign_coords(time=("time", time_days))
+ds["time"].attrs["units"] = f"days since {origin_str}"
+ds["time"].attrs["calendar"] = calendar
+
+# propery decode times
+time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
+ds = xr.decode_cf(ds, decode_times=time_coder)
 
 ##########################################################################################
 # ohc
@@ -130,9 +161,7 @@ ohc_climatology_ZJ = global_ohc_ZJ.mean(
 )  # mean of time/depth (there's only 1 depth)
 
 # temporal mean of ohc
-ohc_zj = ds["ohc"] * 1e21
-mean_ohc = ohc_zj.mean()
-
+mean_ohc = ds["ohc"].mean()
 print(f"Global OHC (from ohcJm2): {ohc_climatology_ZJ:.3e} ZJ")
 print(f"Global OHC (from ohc)   : {mean_ohc:.3e} ZJ")
 
@@ -151,7 +180,8 @@ for var in ["ohcJm2", "ohc"]:
     # define output datasets
     if var == "ohcJm2":
         out_ds = ds[base_vars + [var]]
-        out_ds = out_ds.transpose("time", "depth", "lat", "lon", "bnds")
+        out_ds = standardize_dim_order(out_ds)
+        out_ds["time"].encoding = {"_FillValue": None}
     else:
         out_ds = ds[base_vars + [var, "ohc_se"]]
         out_ds = out_ds.drop_dims(["lat", "lon"])
@@ -165,7 +195,8 @@ for var in ["ohcJm2", "ohc"]:
         )
         # so I have to set them again
         out_ds["depth"].attrs, out_ds["depth"].encoding = orig_attrs, orig_encoding
-        out_ds = out_ds.transpose("time", "depth", "bnds")
+        out_ds = standardize_dim_order(out_ds)
+        out_ds["time"].encoding = {"_FillValue": None}
 
     # Define varibable-dependant attributes
     ohc_title = "WOA23 global yearly mean ocean heat content (0-2000m) anomaly (WOA09 1955-2006 anomaly baseline) from in-situ profile data"

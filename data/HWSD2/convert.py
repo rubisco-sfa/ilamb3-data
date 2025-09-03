@@ -5,6 +5,7 @@ import subprocess
 import warnings
 from pathlib import Path
 
+import cftime as cf
 import numpy as np
 import pandas as pd
 import rioxarray as rxr
@@ -13,7 +14,19 @@ from dask.distributed import Client, LocalCluster
 from osgeo import gdal
 
 # Determine the parent directory (ILAMB-DATA)
-import ilamb3_data as hf
+from ilamb3_data import (
+    create_output_filename,
+    gen_trackingid,
+    gen_utc_timestamp,
+    get_cmip6_variable_info,
+    set_coord_bounds,
+    set_lat_attrs,
+    set_lon_attrs,
+    set_ods_global_attrs,
+    set_time_attrs,
+    set_var_attrs,
+    standardize_dim_order,
+)
 
 #####################################################
 # set parameters
@@ -237,26 +250,35 @@ def create_netcdf(
 
     # create time dimension
     ds = ds.drop_vars(["spatial_ref"], errors="ignore")
-    ds = hf.set_time_attrs(ds, sdate=sdate, edate=edate)
-    ds = hf.set_lat_attrs(ds)
-    ds = hf.set_lon_attrs(ds)
-    ds = hf.set_coord_bounds(ds, "lat")
-    ds = hf.set_coord_bounds(ds, "lon")
+    ds = set_time_attrs(
+        ds,
+        bounds_frequency="fx",
+        ref_date=cf.DatetimeGregorian(sdate.year, sdate.month, sdate.day),
+        create_new_time=True,
+        sdate=cf.DatetimeGregorian(sdate.year, sdate.month, sdate.day),
+        edate=cf.DatetimeGregorian(edate.year, edate.month, edate.day),
+    )
+    ds = set_lat_attrs(ds)
+    ds = set_lon_attrs(ds)
+    ds = set_coord_bounds(ds, "lat")
+    ds = set_coord_bounds(ds, "lon")
+    ds = standardize_dim_order(ds)
 
     # ensure csoil has time dimension
     ds[var] = ds[var].expand_dims(time=ds.sizes["time"]).assign_coords(time=ds["time"])
+    ds["time"].encoding["_FillValue"] = None
 
     # Set timestamps and tracking id
-    download_stamp = hf.gen_utc_timestamp(Path(local_data).stat().st_mtime)
-    creation_stamp = hf.gen_utc_timestamp()
+    download_stamp = gen_utc_timestamp(Path(local_data).stat().st_mtime)
+    creation_stamp = gen_utc_timestamp()
     today_stamp = datetime.datetime.now().strftime("%Y%m%d")
-    tracking_id = hf.gen_trackingid()
+    tracking_id = gen_trackingid()
 
     # get variable attribute info via ESGF CMIP variable information
-    info = hf.get_cmip6_variable_info(var)
+    info = get_cmip6_variable_info(var)
 
     # set variable attributes
-    ds = hf.set_var_attrs(
+    ds = set_var_attrs(
         ds,
         var=var,
         cmip6_units=info["variable_units"],
@@ -277,12 +299,12 @@ def create_netcdf(
 """
 
     # set the attributes
-    ds = hf.set_ods_global_attrs(
+    ds = set_ods_global_attrs(
         ds,
         activity_id="obs4MIPs",
         aux_variable_id="N/A",
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
-        contact="Matieu Henry (Matieu.Henry@fao.org)",
+        contact="Matieu Henry (matieu.henry@fao.org)",
         conventions="CF-1.12 ODS-2.5",
         creation_date=creation_stamp,
         dataset_contributor="Morgan Steckler",
@@ -311,14 +333,14 @@ def create_netcdf(
         source_version_number="2.0",
         title="Harmonized World Soil Database version 2.0",
         tracking_id=tracking_id,
-        variable_id="cSoil",
+        variable_id=var,
         variant_label="REF",
         variant_info="CMORized product prepared by ILAMB and CMIP IPO",
         version=f"v{today_stamp}",
     )
 
     # export as netcdf
-    out_path = hf.create_output_filename(ds.attrs)
+    out_path = create_output_filename(ds.attrs)
     ds.to_netcdf(out_path, format="NETCDF4")
 
 

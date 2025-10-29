@@ -113,8 +113,8 @@ percent_burned_fine_masked = ds_fine.where(da_fine_mask > 0)
 
 # Interpolate coarse 1 degree data to 0.25 degrees
 res = 0.25
-newlon = np.arange(-179.875, 180, res)
-newlat = np.arange(-89.875, 90, res)
+newlon = np.arange(-180, 180, res)
+newlat = np.arange(-90, 90, res)
 percent_burned_coarse_masked_interp = percent_burned_coarse_masked.interp(
     method="nearest", lat=newlat, lon=newlon
 )

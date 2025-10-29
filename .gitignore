@@ -5,6 +5,8 @@ build/
 dist/
 wheels/
 *.egg-info
+*DS_Store
+*.ipynb
 
 # Virtual environments
 .venv
@@ -12,3 +14,10 @@ wheels/
 # ilamb3-data specific
 *.nc
 *_raw/
+*.tifdata/Hoffman-1-0/dora_convert.py
+data/CCI-CryoClim-FSC-1/dap.ceda.ac.uk/
+data/LORA-1-0/convert_dora.py
+data/WECANN-1-0/dora_convert.py
+data/WOA-23/heat_content/convert_nate.py
+data/HWSD-2-0/hwsd2_cSoil_D1-D7_seq1-12_resamp.tif
+data/Hoffman-1-0/dora_convert.py

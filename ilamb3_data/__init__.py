@@ -70,7 +70,7 @@ def download_from_html(remote_source: str, local_source: str | None = None) -> s
     return local_source
 
 
-def download_from_zenodo(record: dict):
+def download_from_zenodo(record: dict, download_dir: str):
     """
     Download all files from a Zenodo record dict into a '_temp' directory.
     Example for getting a Zenodo record:
@@ -99,7 +99,6 @@ def download_from_zenodo(record: dict):
         records = data['hits']['hits']
         record = data['hits']['hits'][0]
     """
-    download_dir = "_temp"
     os.makedirs(download_dir, exist_ok=True)
 
     title = record.get("metadata", {}).get("title", "No Title")
@@ -413,12 +412,15 @@ def cf_to_num(
             output_dtypes=[np.dtype(dtype)],
         )
 
-    # Preserve attrs/encoding, but ensure units/calendar/dtype reflect the numeric encoding
+    # attrs: copy and enforce updated units/calendar
     out.attrs = {**da.attrs, "units": units, "calendar": calendar}
-    out.encoding = {
-        **getattr(da, "encoding", {"_FillValue": None}),
-        "dtype": np.dtype(dtype),
-    }
+
+    # encoding: start from existing, but force dtype and _FillValue=None
+    enc = dict(getattr(da, "encoding", {}))  # shallow copy if present
+    enc["dtype"] = np.dtype(dtype)
+    enc["_FillValue"] = None
+
+    out.encoding = enc
     return out
 
 
@@ -1134,6 +1136,167 @@ def set_ods_global_attrs(
 
     ds.attrs = attrs
 
+    return ds
+
+
+def set_ods26_global_attrs(
+    ds: xr.Dataset,
+    *,
+    activity_id: str = "obs4MIPs",
+    aux_uncertainty_id: str = "N/A",
+    comment: Optional[str],
+    contact: str = "N/A",  # First Last (email)
+    Conventions: str = "CF-1.12 ODS-2.6",
+    creation_date: str = "N/A",
+    dataset_contributor: Optional[str],
+    data_specs_version: str = "2.6",
+    doi: Optional[str],
+    frequency: str = "N/A",
+    grid: str = "N/A",
+    grid_label: str = "N/A",
+    has_aux_unc: str = "FALSE",  # must be TRUE or FALSE
+    history: Optional[str],
+    institution: str = "N/A",
+    institution_id: str = "N/A",
+    license: str = "N/A",
+    nominal_resolution: str = "N/A",
+    processing_code_location: str = "N/A",
+    product: str = "N/A",
+    realm: str = "N/A",
+    references: str = "N/A",
+    region: str = "N/A",
+    site_id: str = "N/A",
+    site_location: str = "N/A",
+    source: str = "N/A",
+    source_data_retrieval_date: Optional[str],
+    source_data_url: str = "N/A",
+    source_id: str = "N/A",
+    source_label: str = "N/A",
+    source_type: str = "N/A",
+    source_version_number: str = "N/A",
+    table_id: str = "N/A",
+    title: Optional[str],
+    tracking_id: str = "N/A",
+    variable_id: str = "N/A",
+    variant_label: str = "N/A",
+    variant_info: Optional[str],
+    version: Optional[str],
+) -> xr.Dataset:
+    """
+    Set required NetCDF global attributes according to CF-Conventions 1.12 and ODS-2.6.
+
+    This function validates that all required attributes are provided and assigns them
+    to the global attributes of the input xarray dataset. Optional fields may be set to None.
+    """
+
+    base_url = "https://raw.githubusercontent.com/PCMDI/obs4MIPs-cmor-tables/master/"
+
+    # Load controlled vocabularies from online JSON files
+    # auxuncid_cv = load_json_from_url(base_url + "obs4MIPs_aux_uncertainty_id.json")
+    freq_cv = load_json_from_url(base_url + "obs4MIPs_frequency.json")
+    gridlabel_cv = load_json_from_url(base_url + "obs4MIPs_grid_label.json")
+    # hasauxunc_cv = load_json_from_url(base_url + "obs4MIPs_has_aux_unc.json")
+    instid_cv = load_json_from_url(base_url + "obs4MIPs_institution_id.json")
+    license_cv = load_json_from_url(base_url + "obs4MIPs_license.json")
+    nomres_cv = load_json_from_url(base_url + "obs4MIPs_nominal_resolution.json")
+    product_cv = load_json_from_url(base_url + "obs4MIPs_product.json")
+    realm_cv = load_json_from_url(base_url + "obs4MIPs_realm.json")
+    region_cv = load_json_from_url(base_url + "obs4MIPs_region.json")
+    reqattrs_cv = load_json_from_url(
+        base_url + "obs4MIPs_required_global_attributes.json"
+    )
+    siteid_cv = load_json_from_url(base_url + "obs4MIPs_site_id.json")
+    sourceid_cv = load_json_from_url(base_url + "obs4MIPs_source_id.json")
+    sourcetype_cv = load_json_from_url(base_url + "obs4MIPs_source_type.json")
+    tableid_cv = load_json_from_url(base_url + "obs4MIPs_table_id.json")
+
+    # Fill in required global attributes
+    attrs = {
+        "activity_id": activity_id,
+        "aux_uncertainty_id": aux_uncertainty_id,
+        "contact": contact,
+        "Conventions": Conventions,
+        "creation_date": creation_date,
+        "data_specs_version": data_specs_version,
+        "frequency": frequency,
+        "grid": grid,
+        "grid_label": grid_label,
+        "has_aux_unc": has_aux_unc,
+        "institution": institution,
+        "institution_id": institution_id,
+        "license": license,
+        "nominal_resolution": nominal_resolution,
+        "processing_code_location": processing_code_location,
+        "product": product,
+        "realm": realm,
+        "references": references,
+        "region": region,
+        "site_id": site_id,
+        "site_location": site_location,
+        "source": source,
+        "source_data_url": source_data_url,
+        "source_id": source_id,
+        "source_label": source_label,
+        "source_type": source_type,
+        "source_version_number": source_version_number,
+        "table_id": table_id,
+        "tracking_id": tracking_id,
+        "variable_id": variable_id,
+        "variant_label": variant_label,
+    }
+
+    # Add optional attributes if provided
+    optional_attrs = {
+        "comment": comment,
+        "dataset_contributor": dataset_contributor,
+        "doi": doi,
+        "history": history,
+        "source_data_retrieval_date": source_data_retrieval_date,
+        "title": title,
+        "variant_info": variant_info,
+        "version": version,
+    }
+    for key, value in optional_attrs.items():
+        if value is not None:
+            attrs[key] = value
+
+    # Sort the keys alphabetically
+    attrs = dict(sorted(attrs.items()))
+
+    # Validate required attributes
+    missing = []
+    for attr in reqattrs_cv["required_global_attributes"]:
+        if attr not in attrs or attrs[attr] is None:
+            missing.append(attr)
+    if missing:
+        raise ValueError(f"Missing required global attributes: {', '.join(missing)}")
+
+    # Validate controlled vocabularies
+    cv_checks = {
+        # "aux_uncertainty_id": auxuncid_cv["aux_uncertainty_id"],
+        "frequency": freq_cv["frequency"],
+        "grid_label": gridlabel_cv["grid_label"],
+        # "has_aux_unc": hasauxunc_cv["has_aux_unc"],
+        "institution_id": instid_cv["institution_id"],
+        "nominal_resolution": nomres_cv["nominal_resolution"],
+        "product": product_cv["product"],
+        "realm": realm_cv["realm"],
+        "region": region_cv["region"],
+        "site_id": siteid_cv["site_id"],
+        "source_id": sourceid_cv["source_id"],
+        "source_type": sourcetype_cv["source_type"],
+    }
+    for attr, cv_obj in cv_checks.items():
+        if attrs[attr] not in cv_obj:
+            # Warn but don't fail
+            warnings.warn(
+                f"Attribute '{attr}' has value '{attrs[attr]}' "
+                f"which is not in the controlled vocabulary."
+            )
+            continue
+
+    # set global attributes
+    ds.attrs = attrs
     return ds
 
 

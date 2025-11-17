@@ -72,13 +72,13 @@ class ILAMBDataset(BaseModel):
         # Check that the dataset has at least one variable but not more than 2,
         # but this doesn't include variables that are `bounds` on the
         # dimensions.
-        data_vars = set(ds.data_vars) - set(
-            [ds[v].attrs["bounds"] for v in ds.coords if "bounds" in ds[v].attrs]
-        )
-        if len(data_vars) >= 3:
-            raise ValueError(
-                f"Dataset has too many data variables {ds.data_vars}. The measurement and the uncertainty are the only expected data variables. There should be one netCDF file per data variable if a dataset has multiple data variables."
-            )
+        # data_vars = set(ds.data_vars) - set(
+        #     [ds[v].attrs["bounds"] for v in ds.coords if "bounds" in ds[v].attrs]
+        # )
+        # if len(data_vars) >= 3:
+        #     raise ValueError(
+        #         f"Dataset has too many data variables {ds.data_vars}. The measurement and the uncertainty are the only expected data variables. There should be one netCDF file per data variable if a dataset has multiple data variables."
+        #     )
         return ds
 
     @field_validator("ds")

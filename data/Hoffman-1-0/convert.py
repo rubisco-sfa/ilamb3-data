@@ -19,6 +19,10 @@ from ilamb3_data import (
     set_var_attrs,
 )
 
+VARS = ["nbp", "fgco2"]
+UNC = "95pci"
+
+
 # Download the data
 remote_source = "https://www.ilamb.org/ILAMB-Data/DATA/nbp/HOFFMAN/nbp_1850-2010.nc"
 local_source = Path("_raw")
@@ -38,43 +42,31 @@ time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
 ds = xr.open_dataset(local_source, decode_times=time_coder)
 ds = set_time_attrs(ds, bounds_frequency="Y", ref_date=cf.DatetimeNoLeap(1850, 1, 1))
 
-# Get attribute info for fgco2 and nbp
-fgco2_info = get_cmip6_variable_info("fgco2")
-nbp_info = get_cmip6_variable_info("nbp")
+for var in VARS:
+    # Get attribute info for fgco2 and nbp
+    var_info = get_cmip6_variable_info(var)
 
-# Set correct attribute information for the vars
-ds = set_var_attrs(
-    ds,
-    var="fgco2",
-    cmip6_units=fgco2_info["variable_units"],
-    cmip6_standard_name=fgco2_info["cf_standard_name"],
-    cmip6_long_name=fgco2_info["variable_long_name"],
-    ancillary_variables="fgco2_95ci",
-    target_dtype=np.float32,
-    convert=False,
-)
-ds = set_var_attrs(
-    ds,
-    var="nbp",
-    cmip6_units=nbp_info["variable_units"],
-    cmip6_standard_name=nbp_info["cf_standard_name"],
-    cmip6_long_name=nbp_info["variable_long_name"],
-    ancillary_variables="nbp_95ci",
-    target_dtype=np.float32,
-    convert=False,
-)
+    # Set correct attribute information for the vars
+    ds = set_var_attrs(
+        ds,
+        var=var,
+        cmip6_units=var_info["variable_units"],
+        cmip6_standard_name=var_info["cf_standard_name"],
+        cmip6_long_name=var_info["variable_long_name"],
+        ancillary_variables=f"{var}_{UNC}",
+        target_dtype=np.float32,
+        convert=False,
+    )
 
-# Assign ancillary variables
-ds = ds.rename({"fgco2_bnds": "fgco2_95pci"})
-ds.fgco2_95pci.attrs["long_name"] = (
-    f"{ds.fgco2.attrs['standard_name']} 95_pct_confidence_interval"
-)
-ds.fgco2_95pci.encoding = {"_FillValue": np.float32(1.0e20), "dtype": np.float32}
-ds = ds.rename({"nbp_bnds": "nbp_95pci"})
-ds.nbp_95pci.attrs["long_name"] = (
-    f"{ds.nbp.attrs['standard_name']} 95_pct_confidence_interval"
-)
-ds.nbp_95pci.encoding = {"_FillValue": np.float32(1.0e20), "dtype": np.float32}
+    # Assign ancillary variables
+    ds = ds.rename({f"{var}_bnds": f"{var}_{UNC}"})
+    ds[f"{var}_{UNC}"].attrs["long_name"] = (
+        f"{ds[var].attrs['standard_name']} 95_pct_confidence_interval"
+    )
+    ds[f"{var}_{UNC}"].encoding = {
+        "_FillValue": np.float32(1.0e20),
+        "dtype": np.float32,
+    }
 
 # Clean up attrs
 for var in ds.variables:
@@ -83,7 +75,7 @@ ds["nbp"].attrs.pop("bounds", None)
 ds["fgco2"].attrs.pop("bounds", None)
 
 # Set global attributes and export
-for var in ["nbp", "fgco2"]:
+for var in VARS:
     # Create one ds per variable
     out_ds = ds.drop_vars([v for v in ds if (var not in v and "time" not in v)])
     out_ds["time"].encoding = {"_FillValue": None}
@@ -100,7 +92,7 @@ for var in ["nbp", "fgco2"]:
     out_ds = set_ods_global_attrs(
         out_ds,
         activity_id="obs4MIPs",
-        aux_variable_id=f"{var}_95pci",
+        aux_variable_id=f"{var}_{UNC}",
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
         contact="Forrest Hoffman (forrest@climatemodeling.org)",
         conventions="CF-1.12 ODS-2.5",

@@ -11,7 +11,6 @@ to click to download. Instead, save this HTML page as "manifest.html" into the d
 where you will execute this script.
 """
 
-import os
 import time
 from glob import glob
 from pathlib import Path
@@ -20,43 +19,23 @@ from zipfile import ZipFile
 import cftime as cf
 import numpy as np
 import pandas as pd
-import requests
 import xarray as xr
 from bs4 import BeautifulSoup
 from tqdm import tqdm
 
+import ilamb3_data as ild
+
 RAW_PATH = "_raw"
-
-
-def download_file(remote_source: str, output_path: str = "_raw") -> str:
-    output_path = Path(output_path)
-    if not output_path.is_dir():
-        output_path.mkdir(parents=True, exist_ok=True)
-    local_source = output_path / os.path.basename(remote_source).split("?")[0]
-    if os.path.isfile(local_source):
-        return local_source
-    resp = requests.get(remote_source, stream=True, timeout=10)
-    resp.raise_for_status()
-    with open(local_source, "wb") as fdl:
-        with tqdm(
-            total=int(resp.headers["Content-Length"]),
-            unit="B",
-            unit_scale=True,
-            desc=str(local_source),
-        ) as pbar:
-            for chunk in resp.iter_content(chunk_size=1024):
-                if chunk:
-                    fdl.write(chunk)
-                    pbar.update(len(chunk))
-    return local_source
-
 
 # Download the files listed in "manifest.html", see instructions above.
 html = open("manifest.html").read()
 soup = BeautifulSoup(html, "html.parser")
 links = [link.attrs["href"] for link in soup.find_all("a", {"class": "download-link"})]
+raw_path = Path(RAW_PATH)
+raw_path.mkdir(parents=True, exist_ok=True)
 for link in links:
-    download_file(link, output_path=RAW_PATH)
+    local_source = Path(link).name.split("?")[0]
+    ild.download_from_html(link, str(raw_path / local_source))
 
 # Unzip just the monthly data
 for zipfile in tqdm(glob(f"{RAW_PATH}/*.zip"), desc="Unzipping"):
@@ -190,7 +169,7 @@ ds["rlns"].attrs = {
 
 # Define the global attributes
 download_stamp = time.strftime(
-    "%Y-%m-%d", time.localtime(os.path.getctime("manifest.html"))
+    "%Y-%m-%d", time.localtime(Path("manifest.html").stat().st_ctime)
 )
 generate_stamp = time.strftime("%Y-%m-%d")
 attrs = {

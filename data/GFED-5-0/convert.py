@@ -87,7 +87,7 @@ files_97_00 = []  # For 1997-2000 (1 degree)
 files_01_20 = []  # For 2001-2020 (0.25 degree)
 for f in all_files:
     basename = os.path.basename(f)  # e.g., "BA200012.nc"
-    # Extract the year from the filename; characters at positions 2:6.
+    # Extract the year from the filename; characters at positions 2:6
     year = int(basename[2:6])
     if year < 2001:
         files_97_00.append(f)
@@ -102,13 +102,17 @@ ds_97_00 = xr.open_mfdataset(files_97_00, decode_times=time_coder)
 ds_01_20 = xr.open_mfdataset(files_01_20, decode_times=time_coder)
 
 # Load burnable area (and mask) datasets
-# Sum of 0.25deg burnable area == sum of 1deg burnable area
+# Note: sum of 0.25deg burnable area == sum of 1deg burnable area
 ba_97_00 = xr.open_dataset("_raw/BurnableArea_preMOD.nc", decode_times=time_coder)[
     "BurableArea"
 ]  # note the mispelling of Burnable...
 ba_01_20 = xr.open_dataset("_raw/BurnableArea.nc", decode_times=time_coder)[
     "BurableArea"
 ]
+
+# Drop 0 values (non-burnable areas)
+ba_97_00 = ba_97_00.where(ba_97_00 > 0)
+ba_01_20 = ba_01_20.where(ba_01_20 > 0)
 
 ######################################################################
 # Process netcdfs
@@ -122,20 +126,19 @@ newlat = ba_01_20["lat"]
 newlon = ba_01_20["lon"]
 
 # Map coarse burned area and coarse burnable area onto .25deg grid
-# Nearest is fine because the 1deg and 0.25deg grids are aligned (i.e.,
-# 0.25deg grid points fall exactly on 1deg grid points)
+# Nearest is fine because the 1deg and 0.25deg grids are aligned
 ds_97_00 = ds_97_00["Total"].interp(lat=newlat, lon=newlon, method="nearest")
 ba_97_00 = ba_97_00.interp(lat=newlat, lon=newlon, method="nearest")
 
-# Downscale burned area (km² → km² on 0.25°) & convert to percent of burnable area
+# Downscale burned area (km2 -> km2 on 0.25deg) & convert to percent of burnable area
 # 1deg data at 0.25deg cells * burnable area fraction of 1deg cell
-tot_ds_97_00 = ds_97_00 * xr.where(ba_97_00 > 0, ba_01_20 / ba_97_00, 0.0)
+tot_ds_97_00 = ds_97_00 * xr.where(ba_97_00 > 0, ba_01_20 / ba_97_00, np.nan)
 pct_ds_97_00 = xr.where(ba_01_20 > 0, 100.0 * tot_ds_97_00 / ba_01_20, np.nan)
 ds_97_00 = pct_ds_97_00.to_dataset(name="burntFractionAll")
 
 # Fine data (2001-2020)
 # ---------------------
-ds_01_20 = ds_01_20.where(ba_01_20 > 0)
+
 pct_ds_01_20 = (ds_01_20["Total"] / ba_01_20) * 100
 ds_01_20 = ds_01_20.assign({"burntFractionAll": pct_ds_01_20})
 
@@ -220,7 +223,7 @@ out_ds.to_netcdf(out_path, format="NETCDF4")
 # Plotting verification
 ######################################################################
 
-# Spatial mean
+# Temporal mean (I think I can assume consistent monthly time steps, so no integral)
 mean_da = out_ds["burntFractionAll"].mean(dim="time") * 12  # annual mean
 mean_da = mean_da.where(mean_da > 0)
 plt.figure(figsize=(10, 5))
@@ -237,15 +240,4 @@ plt.tight_layout()
 plt.savefig(
     "/Users/6ru/Desktop/ilamb3-data/data/GFED-5-0/mean_burntFractionAll.png", dpi=300
 )
-
-
-# Temporal mean
-mean_time_series = out_ds["burntFractionAll"].mean(dim=["lat", "lon"])
-plt.figure()
-mean_time_series.plot()
-plt.ylim(0, 1)
-plt.ylabel("Global Mean Burnt Fraction (%)")
-plt.title("GFED-5 Burnt Fraction Time Series (1997-2020)")
-plt.savefig(
-    "/Users/6ru/Desktop/ilamb3-data/data/GFED-5-0/burntFractionAll_timeseries.png"
-)
+plt.close()

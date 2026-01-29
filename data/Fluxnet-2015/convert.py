@@ -176,21 +176,18 @@ for varname in tqdm(ds, desc="Writing netcdf files"):
     if uname in ds:
         out_ds[varname].attrs["ancillary_variables"] = uname
 
-    out_ds = ild.set_ods_global_attrs(
+    out_ds = ild.set_ods26_global_attrs(
         out_ds,
-        activity_id="obs4MIPs",
-        comment="",  # ?
-        contact="",  # ?
-        conventions="CF-1.12 ODS-2.5",
+        aux_uncertainty_id="",  # if there is uncertainty I say the variable_id of it here?
+        comment="",
+        contact="",  # this should be First Last (email) of someone from fluxnet?
         creation_date=generate_stamp,
         dataset_contributor="Nathan Collier",
-        data_specs_version="ODS2.5",
         doi="N/A",
-        external_variables="N/A",
         frequency="mon",
         grid="collection of sites",  # ?
         grid_label="gn",  # ?
-        has_auxdata="False",  # ?
+        has_aux_unc="True",  # if it is gpp or reco?
         history=f"""
 {download_stamp}: downloaded using https://fluxnet.org/data/download-data/;
 {generate_stamp}: converted to obs4MIP format""",
@@ -212,7 +209,7 @@ for varname in tqdm(ds, desc="Writing netcdf files"):
         source_version_number="2015",
         title="Fluxnet2015",
         tracking_id=tracking_id,
-        variable_id=var,
+        variable_id=varname,
         variant_label="ILAMB",
         variant_info="CMORized product prepared by ILAMB",
         version=f"v{generate_stamp}",

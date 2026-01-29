@@ -237,7 +237,7 @@ plt.pcolormesh(
 cbar = plt.colorbar()
 cbar.set_label("Burned fraction (%)")
 plt.tight_layout()
-plt.savefig(
-    "/Users/6ru/Desktop/ilamb3-data/data/GFED-5-0/mean_burntFractionAll.png", dpi=300
-)
+
+out_path = raw_dir.parent / "mean_burntFractionAll.png"
+plt.savefig(out_path, dpi=300)
 plt.close()

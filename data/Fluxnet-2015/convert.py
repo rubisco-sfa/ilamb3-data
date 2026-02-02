@@ -180,7 +180,9 @@ for varname in tqdm(ds, desc="Writing netcdf files"):
     out_ds = ild.set_ods26_global_attrs(
         out_ds,
         aux_uncertainty_id="stderr" if has_stderr else "",
-        comment="",
+        comment=f"{varname}=(DT+NT)/2 and {varname}_stderr = |DT-NT|/2"
+        if has_stderr
+        else "",
         contact="Fluxnet Support Team (fluxdata-support@fluxdata.org)",
         creation_date=generate_stamp,
         dataset_contributor="Nathan Collier",

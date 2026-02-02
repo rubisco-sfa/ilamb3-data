@@ -40,13 +40,13 @@ def get_fluxnet_variable_conversions() -> pd.DataFrame:
                 ["gross_primary_productivity", "gpp", "GPP_VUT_MEAN", "g m-2 d-1"],
                 [
                     "ecosystem_respiration standard_error",
-                    "reco_uncert",
+                    "reco_stderr",
                     "RECO_VUT_UNCERT",
                     "g m-2 d-1",
                 ],
                 [
                     "gross_primary_productivity standard_error",
-                    "gpp_uncert",
+                    "gpp_stderr",
                     "GPP_VUT_UNCERT",
                     "g m-2 d-1",
                 ],
@@ -164,7 +164,7 @@ generate_stamp = time.strftime("%Y-%m-%d")
 tracking_id = ild.gen_trackingid()
 
 for varname in tqdm(ds, desc="Writing netcdf files"):
-    if "uncert" in varname or "_bnds" in varname:
+    if "_stderr" in varname or "_bnds" in varname:
         continue
     to_drop = [
         v
@@ -172,47 +172,48 @@ for varname in tqdm(ds, desc="Writing netcdf files"):
         if (varname not in v) and ("time" not in v) and (not v.endswith("_bnds"))
     ]
     out_ds = ds.drop_vars(to_drop)
-    uname = f"{varname}_uncert"
+    uname = f"{varname}_stderr"
     if uname in ds:
         out_ds[varname].attrs["ancillary_variables"] = uname
 
+    has_stderr = "gpp" in varname or "reco" in varname
     out_ds = ild.set_ods26_global_attrs(
         out_ds,
-        aux_uncertainty_id="",  # if there is uncertainty I say the variable_id of it here?
+        aux_uncertainty_id="stderr" if has_stderr else "",
         comment="",
-        contact="",  # this should be First Last (email) of someone from fluxnet?
+        contact="Fluxnet Support Team (fluxdata-support@fluxdata.org)",
         creation_date=generate_stamp,
         dataset_contributor="Nathan Collier",
         doi="N/A",
         frequency="mon",
-        grid="collection of sites",  # ?
-        grid_label="gn",  # ?
-        has_aux_unc="True",  # if it is gpp or reco?
+        grid="site",
+        grid_label="site",
+        has_aux_unc="TRUE" if has_stderr else "FALSE",
         history=f"""
 {download_stamp}: downloaded using https://fluxnet.org/data/download-data/;
 {generate_stamp}: converted to obs4MIP format""",
         institution="The Fluxnet Community",
         institution_id="Fluxnet",
-        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
-        nominal_resolution="",  # ?
+        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution - 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
+        nominal_resolution="site",
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/Fluxnet-2015/convert.py",
-        product="in situ",
+        product="site-observations",
         realm="land",
-        references="Pastorello, Gilberto and Trotta, Carlo and Canfora, Eleonora and Chu, Housen and Christianson, Danielle and Cheah, You-Wei and Poindexter, Cristina and Chen, Jiquan and Elbashandy, Abdelrahman and Humphrey, Marty and Isaac, Peter and Polidori, Diego and Ribeca, Alessio and van Ingen, Catharine and Zhang, Leiming and Amiro, Brian and Ammann, Christof and Arain, M. Altaf and ArdÃ¶, Jonas and Arkebauer, Timothy and Arndt, Stefan K. and Arriga, Nicola and Aubinet, Marc and Aurela, Mika and Baldocchi, Dennis and Barr, Alan and Beamesderfer, Eric and Marchesini, Luca Belelli and Bergeron, Onil and Beringer, Jason and Bernhofer, Christian and Berveiller, Daniel and Billesbach, Dave and Black, Thomas Andrew and Blanken, Peter D. and Bohrer, Gil and Boike, Julia and Bolstad, Paul V. and Bonal, Damien and Bonnefond, Jean-Marc and Bowling, David R. and Bracho, Rosvel and Brodeur, Jason and BrÃ¼mmer, Christian and Buchmann, Nina and Burban, Benoit and Burns, Sean P. and Buysse, Pauline and Cale, Peter and Cavagna, Mauro and Cellier, Pierre and Chen, Shiping and Chini, Isaac and Christensen, Torben R. and Cleverly, James and Collalti, Alessio and Consalvo, Claudia and Cook, Bruce D. and Cook, David and Coursolle, Carole and Cremonese, Edoardo and Curtis, Peter S. and Dâ€™Andrea, Ettore and da Rocha, Humberto and Dai, Xiaoqin and Davis, Kenneth J. and De Cinti, Bruno and de Grandcourt, Agnes and De Ligne, Anne and De Oliveira, Raimundo C. and Delpierre, Nicolas and Desai, Ankur R. and Di Bella, Carlos Marcelo and di Tommasi, Paul and Dolman, Han and Domingo, Francisco and Dong, Gang and Dore, Sabina and Duce, Pierpaolo and DufrÃªne, Eric and Dunn, Allison and DuÅ¡ek, JiÅ™Ã­ and Eamus, Derek and Eichelmann, Uwe and ElKhidir, Hatim Abdalla M. and Eugster, Werner and Ewenz, Cacilia M. and Ewers, Brent and Famulari, Daniela and Fares, Silvano and Feigenwinter, Iris and Feitz, Andrew and Fensholt, Rasmus and Filippa, Gianluca and Fischer, Marc and Frank, John and Galvagno, Marta and Gharun, Mana and Gianelle, Damiano and Gielen, Bert and Gioli, Beniamino and Gitelson, Anatoly and Goded, Ignacio and Goeckede, Mathias and Goldstein, Allen H. and Gough, Christopher M. and Goulden, Michael L. and Graf, Alexander and Griebel, Anne and Gruening, Carsten and GrÃ¼nwald, Thomas and Hammerle, Albin and Han, Shijie and Han, Xingguo and Hansen, Birger Ulf and Hanson, Chad and Hatakka, Juha and He, Yongtao and Hehn, Markus and Heinesch, Bernard and Hinko-Najera, Nina and HÃ¶rtnagl, Lukas and Hutley, Lindsay and Ibrom, Andreas and Ikawa, Hiroki and Jackowicz-Korczynski, Marcin and JanouÅ¡, Dalibor and Jans, Wilma and Jassal, Rachhpal and Jiang, Shicheng and Kato, Tomomichi and Khomik, Myroslava and Klatt, Janina and Knohl, Alexander and Knox, Sara and Kobayashi, Hideki and Koerber, Georgia and Kolle, Olaf and Kosugi, Yoshiko and Kotani, Ayumi and Kowalski, Andrew and Kruijt, Bart and Kurbatova, Julia and Kutsch, Werner L. and Kwon, Hyojung and Launiainen, Samuli and Laurila, Tuomas and Law, Bev and Leuning, Ray and Li, Yingnian and Liddell, Michael and Limousin, Jean-Marc and Lion, Marryanna and Liska, Adam J. and Lohila, Annalea and LÃ³pez-Ballesteros, Ana and LÃ³pez-Blanco, EfrÃ©n and Loubet, Benjamin and Loustau, Denis and Lucas-Moffat, Antje and LÃ¼ers, Johannes and Ma, Siyan and Macfarlane, Craig and Magliulo, Vincenzo and Maier, Regine and Mammarella, Ivan and Manca, Giovanni and Marcolla, Barbara and Margolis, Hank A. and Marras, Serena and Massman, William and Mastepanov, Mikhail and Matamala, Roser and Matthes, Jaclyn Hatala and Mazzenga, Francesco and McCaughey, Harry and McHugh, Ian and McMillan, Andrew M. S. and Merbold, Lutz and Meyer, Wayne and Meyers, Tilden and Miller, Scott D. and Minerbi, Stefano and Moderow, Uta and Monson, Russell K. and Montagnani, Leonardo and Moore, Caitlin E. and Moors, Eddy and Moreaux, Virginie and Moureaux, Christine and Munger, J. William and Nakai, Taro and Neirynck, Johan and Nesic, Zoran and Nicolini, Giacomo and Noormets, Asko and Northwood, Matthew and Nosetto, Marcelo and Nouvellon, Yann and Novick, Kimberly and Oechel, Walter and Olesen, JÃ¸rgen Eivind and Ourcival, Jean-Marc and Papuga, Shirley A. and Parmentier, Frans-Jan and Paul-Limoges, Eugenie and Pavelka, Marian and Peichl, Matthias and Pendall, Elise and Phillips, Richard P. and Pilegaard, Kim and Pirk, Norbert and Posse, Gabriela and Powell, Thomas and Prasse, Heiko and Prober, Suzanne M. and Rambal, Serge and Rannik, Ãœllar and Raz-Yaseef, Naama and Reed, David and de Dios, Victor Resco and Restrepo-Coupe, Natalia and Reverter, Borja R. and Roland, Marilyn and Sabbatini, Simone and Sachs, Torsten and Saleska, Scott R. and SÃ¡nchez-CaÃ±ete, Enrique P. and Sanchez-Mejia, Zulia M. and Schmid, Hans Peter and Schmidt, Marius and Schneider, Karl and Schrader, Frederik and Schroder, Ivan and Scott, Russell L. and SedlÃ¡k, Pavel and Serrano-OrtÃ­z, PenÃ©lope and Shao, Changliang and Shi, Peili and Shironya, Ivan and Siebicke, Lukas and Å igut, Ladislav and Silberstein, Richard and Sirca, Costantino and Spano, Donatella and Steinbrecher, Rainer and Stevens, Robert M. and Sturtevant, Cove and Suyker, Andy and Tagesson, Torbern and Takanashi, Satoru and Tang, Yanhong and Tapper, Nigel and Thom, Jonathan and Tiedemann, Frank and Tomassucci, Michele and Tuovinen, Juha-Pekka and Urbanski, Shawn and Valentini, Riccardo and van der Molen, Michiel and van Gorsel, Eva and van Huissteden, Ko and Varlagin, Andrej and Verfaillie, Joseph and Vesala, Timo and Vincke, Caroline and Vitale, Domenico and Vygodskaya, Natalia and Walker, Jeffrey P. and Walter-Shea, Elizabeth and Wang, Huimin and Weber, Robin and Westermann, Sebastian and Wille, Christian and Wofsy, Steven and Wohlfahrt, Georg and Wolf, Sebastian and Woodgate, William and Li, Yuelin and Zampedri, Roberto and Zhang, Junhui and Zhou, Guoyi and Zona, Donatella and Agarwal, Deb and Biraud, Sebastien and Torn, Margaret and Papale, Dario. The FLUXNET2015 dataset and the ONEFlux processing pipeline for eddy covariance data, Scientific Data, 10.1038/s41597-020-0534-3.",
+        references="Pastorello, Gilberto and Trotta, Carlo and Canfora, Eleonora and Chu, et al., The FLUXNET2015 dataset and the ONEFlux processing pipeline for eddy covariance data, Scientific Data, 10.1038/s41597-020-0534-3.",
         region="global_land",
         source="Eddy covariance flux tower measurements",
         source_id="Fluxnet-2015",
         source_data_retrieval_date=download_stamp,
         source_data_url="https://fluxnet.org/data/download-data/",
         source_label="Fluxnet",
-        source_type="in situ",
+        source_type="insitu",
         source_version_number="2015",
-        title="Fluxnet2015",
+        title=f"Fluxnet2015 {varname}",
         tracking_id=tracking_id,
         variable_id=varname,
         variant_label="ILAMB",
         variant_info="CMORized product prepared by ILAMB",
-        version=f"v{generate_stamp}",
+        version=f"v{generate_stamp.replace('-', '')}",
     )
 
     out_path = ild.create_output_filename(out_ds.attrs)

@@ -43,28 +43,32 @@ def download_from_html(remote_source: str, local_source: str | None = None) -> s
     Download a file from a remote URL to a local path.
     If the "content-length" header is missing, it falls back to a simple download.
     """
+    CHUNKSIZE = 2**20  # 1 [Mb]
     if local_source is None:
         local_source = os.path.basename(remote_source)
     if os.path.isfile(local_source):
         return local_source
 
     resp = requests.get(remote_source, stream=True)
-    try:
-        total_size = int(resp.headers.get("content-length"))
-    except (TypeError, ValueError):
-        total_size = 0
+    resp.raise_for_status()
+    total_size = [
+        int(value)
+        for key, value in resp.headers.items()
+        if key.lower() == "content-length"
+    ]
+    total_size = max(total_size) if total_size else 0
 
     with open(local_source, "wb") as fdl:
         if total_size:
             with tqdm(
                 total=total_size, unit="B", unit_scale=True, desc=local_source
             ) as pbar:
-                for chunk in resp.iter_content(chunk_size=1024):
+                for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
                     if chunk:
                         fdl.write(chunk)
                         pbar.update(len(chunk))
         else:
-            for chunk in resp.iter_content(chunk_size=1024):
+            for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
                 if chunk:
                     fdl.write(chunk)
     return local_source

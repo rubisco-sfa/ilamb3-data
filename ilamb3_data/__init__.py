@@ -149,16 +149,20 @@ def create_output_filename(attrs: dict) -> str:
     return filename
 
 
-def get_cmip6_variable_info(variable_id: str) -> dict[str, str]:
+def get_cmip6_variable_info(
+    search_key: str, variable_id: str | None = None
+) -> dict[str, str]:
     """
     Given a CMIP6 variable_id, return a dictionary of its standard_name, long_name, and units.
     """
-    df = ESGFCatalog().variable_info(variable_id)
-    if variable_id not in df.index:
-        raise ValueError(
-            f"Variable ID '{variable_id}' not found in CMIP6 variable info."
-        )
-    return df.loc[variable_id].to_dict()
+    df = ESGFCatalog().variable_info(search_key)
+    if variable_id:
+        if variable_id not in df.index:
+            raise ValueError(
+                f"Variable ID '{variable_id}' not found in CMIP6 variable info."
+            )
+        return df.loc[variable_id].to_dict()
+    return df.to_dict(orient="index")
 
 
 def time_bounds_from_frequency(
@@ -1148,18 +1152,18 @@ def set_ods26_global_attrs(
     *,
     activity_id: str = "obs4MIPs",
     aux_uncertainty_id: str = "N/A",
-    comment: Optional[str],
+    comment: Optional[str] = None,
     contact: str = "N/A",  # First Last (email)
     Conventions: str = "CF-1.12 ODS-2.6",
     creation_date: str = "N/A",
-    dataset_contributor: Optional[str],
+    dataset_contributor: Optional[str] = None,
     data_specs_version: str = "2.6",
-    doi: Optional[str],
+    doi: Optional[str] = None,
     frequency: str = "N/A",
     grid: str = "N/A",
     grid_label: str = "N/A",
     has_aux_unc: str = "FALSE",  # must be TRUE or FALSE
-    history: Optional[str],
+    history: Optional[str] = None,
     institution: str = "N/A",
     institution_id: str = "N/A",
     license: str = "N/A",
@@ -1172,25 +1176,71 @@ def set_ods26_global_attrs(
     site_id: str = "N/A",
     site_location: str = "N/A",
     source: str = "N/A",
-    source_data_retrieval_date: Optional[str],
+    source_data_retrieval_date: Optional[str] = None,
     source_data_url: str = "N/A",
     source_id: str = "N/A",
     source_label: str = "N/A",
     source_type: str = "N/A",
     source_version_number: str = "N/A",
     table_id: str = "N/A",
-    title: Optional[str],
+    title: Optional[str] = None,
     tracking_id: str = "N/A",
     variable_id: str = "N/A",
     variant_label: str = "N/A",
-    variant_info: Optional[str],
-    version: Optional[str],
+    variant_info: Optional[str] = None,
+    version: Optional[str] = None,
 ) -> xr.Dataset:
     """
     Set required NetCDF global attributes according to CF-Conventions 1.12 and ODS-2.6.
 
     This function validates that all required attributes are provided and assigns them
     to the global attributes of the input xarray dataset. Optional fields may be set to None.
+
+
+    Args:
+        ds (xr.Dataset): The xarray dataset to which global attributes will be added.
+        activity_id (str, optional): Name of the MIP activity the dataset is part of, default of "obs4MIPs".
+        aux_uncertainty_id (str, optional): Identifier for auxiliary uncertainty data, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_aux_uncertainty_id.json.
+        comment (str, optional): Miscellaneous information about the data or methods used.
+        contact (str): Contact information for the dataset written as <First Last (email)>.
+        Conventions (str, optional): Name of the conventions followed by the dataset, default of "CF-1.12 ODS-2.6".
+        creation_date (str): Date the dataset was created in the format <YYYY-MM-DDThh:mm:ssZ>.
+        dataset_contributor (str, optional): Name of the individual or organization contributing the dataset.
+        data_specs_version (str, optional): Version of the data specifications followed, default of "2.6".
+        doi (str, optional): Digital Object Identifier for the dataset including the "https://doi.org/" prefix.
+        frequency (str, optional): Temporal frequency of the data, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_frequency.json.
+        grid (str, optional): Description of the horizontal grid and/or regridding procedure with no standard format. When necessay, provide brief description of native grid and resolution, and if data have been re-gridded, the re-gridding procedure and description of target grid.
+        grid_label (str, optional): Label identifying the grid, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_grid_label.json.
+        has_aux_unc (str, optional): Indicates if auxiliary uncertainty data is included, must be "TRUE" or "FALSE", default of "FALSE".
+        history (str, optional): List of applications/dates that have modified the original data and how.
+        institution (str, optional): Where the original data were produced, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_institution_id.json. If not in the JSON already, create one like <Institution Name, City, State, Country>.
+        institution_id (str, optional): Identifier for the institution producing the data, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_institution_id.json. If not in the JSON already, create one as an abbreviation of the institution(s) name(s). E.g., "NASA-JPL" or "EmoryU".
+        license (str, optional): License under which the data is shared, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_license.json.
+        nominal_resolution (str, optional): Nominal spatial resolution (similar spatial resolution in km) of the data, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_nominal_resolution.json.
+        processing_code_location (str, optional): URL or DOI pointing to the script used to process the data.
+        product (str, optional): Type of product, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_product.json.
+        realm (str, optional): Earth system domain of the data, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_realm.json.
+        references (str, optional): Reference(s) describing the data or methods used to produce the data.
+        region (str, optional): Geographic region covered by the data, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_region.json.
+        site_id (str, optional): Identifier for the observation site, if one site, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_site_id.json to guide formatting. If multiple sites, set as "collection".
+        site_location (str, optional): Description of the observation site location(s). If multiple sites, set as "collection".
+        source (str, optional): Description of how the data were produced; could just be an expansion of abbreviations in source_id.
+        source_data_retrieval_date (str, optional): Date the original source data were retrieved in the format <YYYY-MM-DD>.
+        source_data_url (str, optional): URL where the original source data can be found.
+        source_id (str, optional): Identifier for the source of the data, formatted as an abbreviation + version (e.g., GFED-5-0). See https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_id.json.
+        source_label (str, optional): Short label for the source of the data, formatted as an abbreviation (e.g., GFED). See "source_label" inside https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_id.json.
+        source_type (str, optional): Type of source that produced the data, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_source_type.json.
+        source_version_number (str, optional): Version number of the source that produced the data (e.g., "5", "ver1.2", "v1", etc).
+        table_id (str, optional): Identifier for the CMOR table the data would fit into, see https://github.com/PCMDI/obs4MIPs-cmor-tables/blob/master/obs4MIPs_table_id.json.
+        title (str, optional): A short description of the file contents, usually including what variable is stored (e.g., "Harmonized World Soil Database v2.0 soil carbon").
+        tracking_id (str, optional): Unique identifier for the dataset instance, can be generated using gen_trackingid().
+        variable_id (str, optional): Identifier for the variable stored in the file, see https://clipc-services.ceda.ac.uk/dreq/index/CMORvar.html or https://clipc-services.ceda.ac.uk/dreq/mipVars.html.
+        variant_label (str, optional): Label indicating the party that prepared the obs4MIPs data, if different from the source_id.
+        variant_info (str, optional): Description of the party that prepared the obs4MIPs data, if variant_label is not the source_id.
+        version (str, optional): Version of the dataset instance created by the data contributor, formatted as "vYYYYMMDD".
+
+    Returns:
+        xr.Dataset: The dataset with updated global attributes.
     """
 
     base_url = "https://raw.githubusercontent.com/PCMDI/obs4MIPs-cmor-tables/master/"

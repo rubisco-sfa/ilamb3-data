@@ -25,7 +25,7 @@ for remote_source, local_source in zip(remote_sources, local_sources):
     if not local_source.is_file():
         ild.download_from_html(remote_source, local_source)
     download_stamp = time.strftime(
-        "%Y-%m-%d", time.localtime((local_source).stat().st_ctime)
+        "%Y%m%d", time.localtime((local_source).stat().st_ctime)
     )
 
 # open and rename some variables
@@ -41,12 +41,24 @@ ds = ild.set_lat_attrs(ds)
 ds = ild.set_lon_attrs(ds)
 
 # write out files
-generate_stamp = time.strftime("%Y-%m-%d")
+generate_stamp = time.strftime("%Y%m%d")
 tracking_id = ild.gen_trackingid()
 variables = [v for v in ds if ("_sd" not in v and "_bnds" not in v)]
 for v in variables:
     uncert = f"{v}_sd"
     out = ds.drop_vars([d for d in ds if d not in [v, uncert, "time_bnds"]])
+
+    var = out[v]
+    ild.set_var_attrs(
+        out,
+        v,
+        var.attrs["units"],
+        var.attrs["standard_name"]
+        if "standard_name" in var.attrs
+        else var.attrs["long_name"],
+        var.attrs["long_name"],
+        uncert,
+    )
     out[v].attrs["ancillary_variables"] = uncert
     out[uncert].attrs = {
         "standard_name": f"{v} standard deviation",
@@ -60,7 +72,7 @@ for v in variables:
         contact="Sanaa Hobeichi (s.hobeichi@unsw.edu.au)",
         creation_date=generate_stamp,
         dataset_contributor="Nathan Collier",
-        doi="10.25914/5c872258dc183",
+        doi="https://doi.org/10.25914/5c872258dc183",
         frequency="mon",
         grid="0.5x0.5 degree latitude x longitude",
         grid_label="gn",
@@ -68,10 +80,10 @@ for v in variables:
         history=f"""
 {download_stamp}: downloaded using https://geonetwork.nci.org.au/geonetwork/srv/eng/catalog.search#/metadata/f4854_2536_6084_5147;
 {generate_stamp}: converted to obs4MIP format""",
-        institution="University of New South Wales",
+        institution="University of New South Wales, Sydney, New South Wales, AUS",
         institution_id="UNSW",
         license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution - 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
-        nominal_resolution="50 km",
+        nominal_resolution="0.5 degree",
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/CLASS-1-1/convert.py",
         product="derived",
         realm="land",
@@ -89,7 +101,7 @@ for v in variables:
         variable_id=v,
         variant_label="ILAMB",
         variant_info="CMORized product prepared by ILAMB",
-        version=f"v{generate_stamp.replace('-', '')}",
+        version=f"v{generate_stamp}",
     )
     out_path = ild.create_output_filename(out.attrs)
     out.to_netcdf(out_path)

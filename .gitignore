@@ -14,6 +14,7 @@ wheels/
 # ilamb3-data specific
 *.nc
 *_raw/
+**/*_raw
 *.tifdata/Hoffman-1-0/dora_convert.py
 data/CCI-CryoClim-FSC-1/dap.ceda.ac.uk/
 data/LORA-1-0/convert_dora.py

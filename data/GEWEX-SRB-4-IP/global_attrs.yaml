@@ -1,0 +1,52 @@
+dataset:
+  source: NASA GEWEX Surface Radiation Budget
+  source_id: GEWEX-SRB-4-IP
+  source_label: GEWEX-SRB
+  source_version_number: "4-IP"
+  source_type: satellite_retrieval
+  source_data_url: https://asdc.larc.nasa.gov/data/SRB/GEWEXSRB_Rel4-IP/
+  realm: atmos
+  product: derived
+  frequency: mon
+  grid: "1x1 degree latitude x longitude"
+  grid_label: gn
+  nominal_resolution: "1 degree"
+  has_aux_unc: "FALSE"
+  region: global
+  tracking_id: null
+  variable_id: null
+  variant_label: "ILAMB"
+  variant_info: "CMORized product prepared by ILAMB"
+  institution: "NASA-LaRC (Langley Research Center) Hampton, Va"
+  institution_id: NASA-LaRC
+  contact: "Seiji Kato (seiji.kato@nasa.gov)"
+
+license:
+  license: >
+    Data in this file produced by ILAMB is licensed under a Creative Commons
+    Attribution - 4.0 International (CC BY - 4.0) License
+    (https://creativecommons.org/licenses/).
+
+references:
+  references: >
+    Cox, Stephen J., Paul W. Stackhouse, Jr., Shashi K. Gupta,
+    J. Colleen Mikovitz, and Taiping Zhang, 2017:
+    NASA/GEWEX shortwave surface radiation budget: Integrated data
+    product with reprocessed radiance, cloud, and meteorology inputs,
+    and new surface albedo treatment. AIP Conference Proceedings,
+    1810, 090001(2017), doi:10.1063/1.4975541.
+
+processing:
+  processing_code_location: >
+    https://github.com/rubisco-sfa/ilamb3-data/tree/main/data/
+  creation_date: null
+  dataset_contributor: "Min Xu"
+  history: null
+  source_data_retrieval_date: null
+  title: null
+  
+data_doi:
+  doi: 
+    - https://doi.org/9.5067/GEWEXSRB/Rel4-IP_Longwave_monthly_utc_1
+    - https://doi.org/10.5067/GEWEXSRB/Rel4-IP_Shortwave_monthly_utc_1
+

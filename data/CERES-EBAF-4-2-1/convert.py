@@ -25,6 +25,7 @@ granules = earthaccess.search_data(
     short_name="CERES_EBAF",
     granule_name="*200003-202509.nc",
 )
+# If not already downloaded, download granules
 files = earthaccess.download(granules, "_raw")
 
 # Set timestamps and tracking id
@@ -113,7 +114,7 @@ for var in vars:
         source_data_retrieval_date=today_stamp,
         source_data_url="https://asdc.larc.nasa.gov/data/CERES/EBAF/Edition4.2.1/",
         source_id="CERES-EBAF-4-2-1",
-        source_label="CERES_EBAF",
+        source_label="CERES-EBAF",
         source_type="satellite_blended",
         source_version_number="4.2.1",
         title=f"CERES EBAF Surface Edition 4.2.1 {var} monthly mean data",

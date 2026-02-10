@@ -25,6 +25,7 @@ granules = earthaccess.search_data(
     short_name="CERES_EBAF",
     granule_name="*200003-202509.nc",
 )
+# If not already downloaded, download granules
 files = earthaccess.download(granules, "_raw")
 
 # Set timestamps and tracking id

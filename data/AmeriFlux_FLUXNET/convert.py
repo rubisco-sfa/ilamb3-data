@@ -134,9 +134,9 @@ def unzip_data():
                 fzip.extractall(path=RAW_PATH)
 
 ## Download Ameriflux 
-#download_data()
+download_data()
 ## Unzip data files 
-#unzip_data()
+unzip_data()
 
 # Get BADM file 
 badm_file = [f for f in glob(f"{RAW_PATH}/*.xlsx") if "BIF" in f][0]

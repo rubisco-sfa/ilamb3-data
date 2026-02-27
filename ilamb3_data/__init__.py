@@ -1017,6 +1017,8 @@ def set_ods_global_attrs(
     base_url = "https://raw.githubusercontent.com/PCMDI/obs4MIPs-cmor-tables/master/"
 
     freq_cv = load_json_from_url(base_url + "obs4MIPs_frequency.json")
+    # add '30min' to the freq_cv
+    freq_cv['frequency']['30min'] = '30 minutes'
     institution_cv = load_json_from_url(base_url + "obs4MIPs_institution_id.json")
     nominal_res_cv = load_json_from_url(base_url + "obs4MIPs_nominal_resolution.json")
     realm_cv = load_json_from_url(base_url + "obs4MIPs_realm.json")

@@ -1,9 +1,11 @@
+import pathlib
 from datetime import datetime
 
 import cftime as cf
 import earthaccess
 import numpy as np
 import xarray as xr
+import yaml
 
 from ilamb3_data import (
     create_output_filename,
@@ -18,25 +20,24 @@ from ilamb3_data import (
     set_var_attrs,
     standardize_dim_order,
 )
-
-from ilamb3_data.global_attrs_model import DataGlobalAttrs
 from ilamb3_data.cf_attr import CFAttr
-import pathlib
-import yaml
+from ilamb3_data.global_attrs_model import DataGlobalAttrs
 
-FILENAME=pathlib.Path(__file__).name
-PARENTNAME=pathlib.Path(__file__).parent.name
-ILAMB_DATA_URL="https://github.com/rubisco-sfa/ilamb3-data/tree/main/data/"
+FILENAME = pathlib.Path(__file__).name
+PARENTNAME = pathlib.Path(__file__).parent.name
+ILAMB_DATA_URL = "https://github.com/rubisco-sfa/ilamb3-data/tree/main/data/"
 
 # Download CERES EBAF TOA Edition4.2.1 data from Earthdata
-earthaccess.login(strategy="environment")  # You must create an account at https://urs.earthdata.nasa.gov/
+earthaccess.login(
+    strategy="environment"
+)  # You must create an account at https://urs.earthdata.nasa.gov/
 granules_sw = earthaccess.search_data(
-    short_name='GEWEXSRB_Rel4-IP_Shortwave_monthly_utc',
+    short_name="GEWEXSRB_Rel4-IP_Shortwave_monthly_utc",
     downloadable=True,
 )
 
 granules_lw = earthaccess.search_data(
-    short_name='GEWEXSRB_Rel4-IP_Longwave_monthly_utc',
+    short_name="GEWEXSRB_Rel4-IP_Longwave_monthly_utc",
     downloadable=True,
 )
 granules = granules_sw + granules_lw
@@ -58,8 +59,8 @@ tracking_id = gen_trackingid()
 # Open and rename vars
 time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
 ds = xr.open_mfdataset(
-    files, 
-    decode_times=time_coder, 
+    files,
+    decode_times=time_coder,
     mask_and_scale=True,
     combine="by_coords",
     join="inner",
@@ -71,7 +72,7 @@ renaming_dict = {
     "all_lw_dn_sfc": "rlds",
     "all_lw_up_sfc": "rlus",
     "all_sw_diff_sfc": "rsdsdiff",
-#    "par": "par",
+    #    "par": "par",
 }
 ds = ds.rename(renaming_dict)
 
@@ -131,7 +132,9 @@ for var in vars:
         f"{global_attrs['dataset']['source']} {global_attrs['dataset']['source_version_number']} "
         f"{var} {global_attrs['dataset']['frequency']} data"
     )
-    global_attrs["processing"]["processing_code_location"] = f"{ILAMB_DATA_URL}/{PARENTNAME}/{FILENAME}"
+    global_attrs["processing"]["processing_code_location"] = (
+        f"{ILAMB_DATA_URL}/{PARENTNAME}/{FILENAME}"
+    )
 
     # validate
     validated_global_attrs = DataGlobalAttrs.model_validate(global_attrs)

@@ -16,10 +16,7 @@ import requests
 import xarray as xr
 from cf_units import Unit
 from intake_esgf import ESGFCatalog
-from pandas.tseries.frequencies import to_offset
 from tqdm import tqdm
-
-from . import biblatex_builder
 
 
 def create_registry(registry_file: str) -> pooch.Pooch:

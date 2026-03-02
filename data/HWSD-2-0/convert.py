@@ -22,7 +22,7 @@ from ilamb3_data import (
     set_coord_bounds,
     set_lat_attrs,
     set_lon_attrs,
-    set_ods_global_attrs,
+    set_ods26_global_attrs,
     set_time_attrs,
     set_var_attrs,
     standardize_dim_order,
@@ -275,7 +275,7 @@ def create_netcdf(
     tracking_id = gen_trackingid()
 
     # get variable attribute info via ESGF CMIP variable information
-    info = get_cmip6_variable_info(var)
+    info = get_cmip6_variable_info(var, var)
 
     # set variable attributes
     ds = set_var_attrs(
@@ -299,27 +299,21 @@ def create_netcdf(
 """
 
     # set the attributes
-    ds = set_ods_global_attrs(
+    ds = set_ods26_global_attrs(
         ds,
-        activity_id="obs4MIPs",
-        aux_variable_id="N/A",
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
         contact="Matieu Henry (matieu.henry@fao.org)",
-        conventions="CF-1.12 ODS-2.5",
         creation_date=creation_stamp,
         dataset_contributor="Morgan Steckler",
-        data_specs_version="2.5",
-        doi="N/A",
         frequency="fx",
         grid="0.5x0.5 degree latitude x longitude",
         grid_label="gn",
-        has_auxdata="False",
         history=history,
         institution="International Institute for Applied Systems Analysis, Laxenburg, Austria; Food and Agriculture Organization of the United Nations, Rome, Italy",
         institution_id="IIASA-FAO",
-        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
-        nominal_resolution="0.5x0.5 degree",
-        processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/HWSD2/convert.py",
+        license="https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        nominal_resolution="0.5 degree",
+        processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/HWSD-2-0/convert.py",
         product="derived",
         realm="land",
         references="Nachtergaele, F. (Ed.),van Velthuizen, H.(Ed.), Verelst, L.(Ed.), Wiberg, D.(Ed.), Henry, M.(Ed.), Chiozza, F.(Ed.), Yigini, Y.(Ed.), Aksoy, E., Batjes, N., Boateng, E., Fischer, G., Jones, A., Montanarella, L., Shi, X., & Tramberend, S. (2023). Harmonized World Soil Database Version 2.0 (Technical Report). FAO & IIASA.",
@@ -331,11 +325,11 @@ def create_netcdf(
         source_label="HWSD",
         source_type="gridded_insitu",
         source_version_number="2.0",
-        title="Harmonized World Soil Database version 2.0",
+        title=f"Harmonized World Soil Database version 2.0 {var}",
         tracking_id=tracking_id,
         variable_id=var,
-        variant_label="REF",
-        variant_info="CMORized product prepared by ILAMB and CMIP IPO",
+        variant_label="ILAMB",
+        variant_info="CMORized product prepared by ILAMB",
         version=f"v{today_stamp}",
     )
 

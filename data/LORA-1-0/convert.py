@@ -13,7 +13,7 @@ from ilamb3_data import (
     set_coord_bounds,
     set_lat_attrs,
     set_lon_attrs,
-    set_ods_global_attrs,
+    set_ods26_global_attrs,
     set_time_attrs,
     set_var_attrs,
     standardize_dim_order,
@@ -44,7 +44,7 @@ time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
 ds = xr.open_mfdataset(local_sources, engine="netcdf4", decode_times=time_coder)
 
 # Get attribute info for mrro
-mrro_info = get_cmip6_variable_info("mrro")
+mrro_info = get_cmip6_variable_info("mrro", "mrro")
 
 # Set correct attribute information for the vars
 ds = set_var_attrs(
@@ -53,19 +53,18 @@ ds = set_var_attrs(
     cmip6_units=mrro_info["variable_units"],
     cmip6_standard_name=mrro_info["cf_standard_name"],
     cmip6_long_name=mrro_info["variable_long_name"],
-    ancillary_variables="mrro_stddev",
+    ancillary_variables="mrro_sd",
     target_dtype=np.float32,
     convert=True,
 )
 
 # Assign ancillary variables
-ds = ds.assign(mrro_stdev=(("time", "lat", "lon"), ds.mrro_sd.values))
-ds = ds.drop_vars(["mrro_sd"])
-ds.mrro_stdev.attrs = {
+ds = ds.assign(mrro_sd=(("time", "lat", "lon"), ds.mrro_sd.values))
+ds.mrro_sd.attrs = {
     "long_name": f"{ds.mrro.attrs['standard_name']} standard_deviation",
     "cell_methods": "area: standard_deviation",  # copied from source data
 }
-ds.mrro_stdev.encoding = {
+ds.mrro_sd.encoding = {
     "_FillValue": None,  # CMOR default
     "dtype": "float32",
 }
@@ -79,30 +78,26 @@ ds = set_coord_bounds(ds, "lon")
 ds = standardize_dim_order(ds)
 
 # Set global attributes and export
-out_ds = set_ods_global_attrs(
+out_ds = set_ods26_global_attrs(
     ds,
-    activity_id="obs4MIPs",
-    aux_variable_id="mrro_stdev",
+    aux_uncertainty_id="sd",
     comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
     contact="Sanaa Hobeichi (s.hobeichi@student.unsw.edu.au)",
-    conventions="CF-1.12 ODS-2.5",
     creation_date=creation_stamp,
     dataset_contributor="Morgan Steckler",
-    data_specs_version="2.5",
     doi="10.25914/5b612e993d8ea",
-    external_variables="N/A",
     frequency="mon",
     grid="0.5x0.5 degree latitude x longitude",
     grid_label="gn",
-    has_auxdata="True",
+    has_aux_unc="TRUE",
     history=f"""
 {download_stamp}: downloaded {remote_source};
 {creation_stamp}: converted to obs4MIPs format""",
     institution="ARC Centre of Excellence for Climate System Science, NSW, Australia",
     institution_id="ARCCSS",
-    license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",  # OG license: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International Public License
-    nominal_resolution="50 km",
-    processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/LORA/convert.py",
+    license="https://creativecommons.org/licenses/by-nc-sa/4.0/",
+    nominal_resolution="0.5 degree",
+    processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/LORA-1-0/convert.py",
     product="observations",
     realm="land",
     references="Hobeichi, Sanaa, 2018: Linear Optimal Runoff Aggregate v1.0. NCI National Research Data Collection, doi:10.25914/5b612e993d8ea",
@@ -117,8 +112,8 @@ out_ds = set_ods_global_attrs(
     title="Linear Optimal Runoff Aggregate (version v1.0)",
     tracking_id=tracking_id,
     variable_id="mrro",
-    variant_label="REF",
-    variant_info="CMORized product prepared by ILAMB and CMIP IPO",
+    variant_label="ILAMB",
+    variant_info="CMORized product prepared by ILAMB",
     version=f"v{today_stamp}",
 )
 
@@ -130,7 +125,7 @@ encoding = {}
 for var, da in ds_chunked.data_vars.items():
     encoding_copy = da.encoding.copy()
     # only data variables need chunksizes
-    if var in ("mrro", "mrro_stdev"):
+    if var in ("mrro", "mrro_sd"):
         encoding_copy["chunksizes"] = tuple(
             chunks.get(dim, da.sizes[dim]) for dim in da.dims
         )

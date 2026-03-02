@@ -14,7 +14,7 @@ from ilamb3_data import (
     gen_trackingid,
     gen_utc_timestamp,
     get_cmip6_variable_info,
-    set_ods_global_attrs,
+    set_ods26_global_attrs,
     set_time_attrs,
     set_var_attrs,
 )
@@ -44,7 +44,7 @@ ds = set_time_attrs(ds, bounds_frequency="Y", ref_date=cf.DatetimeNoLeap(1850, 1
 
 for var in VARS:
     # Get attribute info for fgco2 and nbp
-    var_info = get_cmip6_variable_info(var)
+    var_info = get_cmip6_variable_info(var, var)
 
     # Set correct attribute information for the vars
     ds = set_var_attrs(
@@ -89,29 +89,26 @@ for var in VARS:
     }
 
     # Set global attributes
-    out_ds = set_ods_global_attrs(
+    out_ds = set_ods26_global_attrs(
         out_ds,
-        activity_id="obs4MIPs",
-        aux_variable_id=f"{var}_{UNC}",
+        aux_uncertainty_id=UNC,
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
         contact="Forrest Hoffman (forrest@climatemodeling.org)",
-        conventions="CF-1.12 ODS-2.5",
         creation_date=creation_stamp,
         dataset_contributor="Morgan Steckler",
-        data_specs_version="2.5",
         doi="N/A",
         frequency="yr",
-        grid="global mean data",
+        grid="site",
         grid_label="gm",
-        has_auxdata="True",
+        has_aux_unc="TRUE",
         history=f"""
 {download_stamp}: downloaded {remote_source};
 {creation_stamp}: converted to obs4MIPs format""",
         institution="University of California at Irvine, Irvine, CA, USA; Oak Ridge National Laboratory, Oak Ridge, TN, USA",
         institution_id="UCI-ORNL",
-        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
+        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/by/4.0/).",
         nominal_resolution="site",
-        processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/Hoffman/convert.py",
+        processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/Hoffman-1-0/convert.py",
         product="derived",
         realm=dynamic_attrs["realm"],
         references="Hoffman, Forrest M., James T. Randerson, Vivek K. Arora, Qing Bao, Patricia Cadule, Duoying Ji, Chris D. Jones, Michio Kawamiya, Samar Khatiwala, Keith Lindsay, Atsushi Obata, Elena Shevliakova, Katharina D. Six, Jerry F. Tjiputra, Evgeny M. Volodin, and Tongwen Wu, (2014) Causes and Implications of Persistent Atmospheric Carbon Dioxide Biases in Earth System Models. J. Geophys. Res. Biogeosci., 119(2):141-162. https://doi.org/10.1002/2013JG002381.",
@@ -121,13 +118,13 @@ for var in VARS:
         source_data_retrieval_date=download_stamp,
         source_data_url=remote_source,
         source_label="Hoffman",
-        source_type="stastical-estimate",
+        source_type="statistical-estimate",
         source_version_number="1.0",
         title=dynamic_attrs["title"],
         tracking_id=tracking_id,
         variable_id=var,
-        variant_label="REF",
-        variant_info="CMORized product prepared by ILAMB and CMIP IPO",
+        variant_label="ILAMB",
+        variant_info="CMORized product prepared by ILAMB",
         version=f"v{today_stamp}",
     )
 

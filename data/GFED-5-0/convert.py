@@ -163,11 +163,11 @@ ds = set_coord_bounds(ds, "lon")
 ds = standardize_dim_order(ds)
 
 # Get variable attribute info via ESGF CMIP variable information
-var_info = get_cmip6_variable_info("burntFractionAll")
+var_info = get_cmip6_variable_info("burntFractionAll", "burntFractionAll")
 ds = set_var_attrs(
     ds,
     var="burntFractionAll",
-    cmip6_units=var_info["variable_units"],
+    cmip6_units="%",
     cmip6_standard_name=var_info["cf_standard_name"],
     cmip6_long_name=var_info["variable_long_name"],
     target_dtype=np.float32,
@@ -193,8 +193,8 @@ out_ds = set_ods26_global_attrs(
 {creation_stamp}: formatted attrs according to obs4MIPs conventions""",
     institution="National Aeronautics and Space Administration, Netherlands Organisation for Scientific Research",
     institution_id="NASA-NOSR",
-    license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY- 4.0) License (https://creativecommons.org/licenses/).",  # OG license: Creative Commons Attribution-NonCommercial-ShareAlike 4.0 International Public License
-    nominal_resolution="25 km",
+    license="https://creativecommons.org/licenses/by/4.0/",
+    nominal_resolution="0.25 degree",
     processing_code_location="https://github.com/ilamb/ilamb3-data/tree/main/data/GFED-5-0/convert.py",
     product="observations",
     realm="land",
@@ -210,8 +210,8 @@ out_ds = set_ods26_global_attrs(
     title="Global Fire Emissions Database (GFED5) Burned Area",
     tracking_id=tracking_id,
     variable_id="burntFractionAll",
-    variant_label="REF",
-    variant_info="CMORized product prepared by ILAMB and CMIP IPO",
+    variant_label="ILAMB",
+    variant_info="CMORized product prepared by ILAMB",
     version=f"v{today_stamp}",
 )
 

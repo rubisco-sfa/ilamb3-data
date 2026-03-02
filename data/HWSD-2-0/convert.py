@@ -1,3 +1,18 @@
+"""
+CAVEAT: if you want to run this script, you must:
+1) Have installed the GDAL (C/C++) library; you can do this easily on mac by running
+    `brew install gdal==<version>` in terminal
+2) then, in terminal, run `uv install gdal==<version>` in your python environment to get
+    the gdal python bindings
+
+Note: We recommend that the version specified in `<version>` should be the same for the
+    C/C++ installation and the Python bindings so that they are compatible.
+    You can check the version of your gdal installation by running
+    `gdal-config --version` in terminal after installing gdal.
+    You can check the version of your gdal python bindings by running
+    `import gdal; print(gdal.__version__)` in python.
+"""
+
 import datetime
 import os
 import sqlite3

@@ -682,12 +682,6 @@ wheels = [
 ]
 
 [[package]]
-name = "gdal"
-version = "3.11.5"
-source = { registry = "https://pypi.org/simple" }
-sdist = { url = "https://files.pythonhosted.org/packages/6b/c7/5b65caf1a6945a7c0815bd63a9905a33886846a41a5dd762fcf4ef172a41/gdal-3.11.5.tar.gz", hash = "sha256:20c26a250b0cacfb541779292fcd65169293102c5b96e30fe60e1c4f4afce0b1", size = 878380 }
-
-[[package]]
 name = "globus-sdk"
 version = "3.51.0"
 source = { registry = "https://pypi.org/simple" }
@@ -748,7 +742,6 @@ dependencies = [
     { name = "cftime" },
     { name = "dask", extra = ["distributed"] },
     { name = "earthaccess" },
-    { name = "gdal" },
     { name = "ilamb3" },
     { name = "intake-esgf" },
     { name = "nc-time-axis" },
@@ -772,7 +765,6 @@ requires-dist = [
     { name = "cftime", specifier = ">=1.6.4.post1" },
     { name = "dask", extras = ["distributed"], specifier = ">=2025.7.0" },
     { name = "earthaccess", specifier = ">=0.16.0" },
-    { name = "gdal", specifier = "==3.11.5" },
     { name = "ilamb3", specifier = ">=2025.4.28" },
     { name = "intake-esgf", specifier = ">=2024.12.7" },
     { name = "nc-time-axis", specifier = ">=1.4.1" },

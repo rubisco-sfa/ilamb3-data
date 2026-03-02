@@ -18,9 +18,13 @@ from cf_units import Unit
 from intake_esgf import ESGFCatalog
 from pandas.tseries.frequencies import to_offset
 from tqdm import tqdm
+import ssl
 
 from . import biblatex_builder
 
+myssl = ssl.create_default_context()
+myssl.check_hostname = False
+myssl.verify_mode = ssl.CERT_NONE
 
 def create_registry(registry_file: str) -> pooch.Pooch:
     """
@@ -927,7 +931,7 @@ def set_cf_global_attributes(
 
 
 def load_json_from_url(url):
-    with urllib.request.urlopen(url) as response:
+    with urllib.request.urlopen(url, context=myssl) as response:
         return json.load(response)
 
 
@@ -1013,6 +1017,8 @@ def set_ods_global_attrs(
     base_url = "https://raw.githubusercontent.com/PCMDI/obs4MIPs-cmor-tables/master/"
 
     freq_cv = load_json_from_url(base_url + "obs4MIPs_frequency.json")
+    # add '30min' to the freq_cv
+    freq_cv['frequency']['30min'] = '30 minutes'
     institution_cv = load_json_from_url(base_url + "obs4MIPs_institution_id.json")
     nominal_res_cv = load_json_from_url(base_url + "obs4MIPs_nominal_resolution.json")
     realm_cv = load_json_from_url(base_url + "obs4MIPs_realm.json")

@@ -2,31 +2,32 @@ import time
 from pathlib import Path
 
 import cftime as cf
+import numpy as np
 import xarray as xr
 
 import ilamb3_data as ild
 
 RAW_PATH = Path("_raw")
+if not RAW_PATH.is_dir():
+    RAW_PATH.mkdir()
 
 # define sources
 remote_sources = [
-    "http://dapds00.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2003.nc",
-    "http://dapds00.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2004.nc",
-    "http://dapds00.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2005.nc",
-    "http://dapds00.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2006.nc",
-    "http://dapds00.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2007.nc",
-    "http://dapds00.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2008.nc",
-    "http://dapds00.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2009.nc",
+    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2003.nc",
+    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2004.nc",
+    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2005.nc",
+    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2006.nc",
+    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2007.nc",
+    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2008.nc",
+    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2009.nc",
 ]
-local_sources = [RAW_PATH / Path(s).name for s in remote_sources]
+local_sources = [str(RAW_PATH / Path(s).name) for s in remote_sources]
 
 # ensure we have downloaded the data
 for remote_source, local_source in zip(remote_sources, local_sources):
-    if not local_source.is_file():
+    if not Path(local_source).is_file():
         ild.download_from_html(remote_source, local_source)
-    download_stamp = time.strftime(
-        "%Y%m%d", time.localtime((local_source).stat().st_ctime)
-    )
+    download_stamp = ild.gen_utc_timestamp(Path(local_source).stat().st_mtime)
 
 # open and rename some variables
 ds = xr.open_mfdataset(local_sources)
@@ -34,41 +35,61 @@ ds = ds.rename({"hfds": "hfdsl", "hfds_sd": "hfdsl_sd", "rs": "rns", "rs_sd": "r
 
 # fix up coordinates
 ds["time"] = [cf.DatetimeGregorian(t.dt.year, t.dt.month, t.dt.day) for t in ds["time"]]
-ds = ild.set_time_attrs(ds, bounds_frequency="M")
+ds = ild.set_time_attrs(
+    ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(2003, 1, 1)
+)
 ds = ild.set_coord_bounds(ds, "lat")
 ds = ild.set_coord_bounds(ds, "lon")
 ds = ild.set_lat_attrs(ds)
 ds = ild.set_lon_attrs(ds)
 
-# write out files
+# write netcdf for each variable
 generate_stamp = time.strftime("%Y%m%d")
 tracking_id = ild.gen_trackingid()
 variables = [v for v in ds if ("_sd" not in v and "_bnds" not in v)]
-for v in variables:
-    uncert = f"{v}_sd"
-    out = ds.drop_vars([d for d in ds if d not in [v, uncert, "time_bnds"]])
+for var in variables:
+    uncert = f"{var}_sd"
+    out = ds.drop_vars([d for d in ds if d not in [var, uncert, "time_bnds"]])
 
-    var = out[v]
-    ild.set_var_attrs(
+    # get standard/long name info and manage when it's not in cmip6 CV or is uncertainty
+    if "_sd" not in var:
+        try:
+            var_info = ild.get_cmip6_variable_info(var, var)
+        except Exception:
+            var_info = {
+                "cf_standard_name": out[var].attrs.get("standard_name", var),
+                "variable_long_name": out[var].attrs.get(
+                    "long_name", var.replace("_", " ").title()
+                ),
+                "variable_units": out[var].attrs.get("units", ""),
+            }
+            var_info["variable_long_name"] = (
+                var_info["variable_long_name"].replace("_", " ").title()
+            )
+
+    # format the var attrs
+    out = ild.set_var_attrs(
         out,
-        v,
-        var.attrs["units"],
-        var.attrs["standard_name"]
-        if "standard_name" in var.attrs
-        else var.attrs["long_name"],
-        var.attrs["long_name"],
-        uncert,
+        var=var,
+        cmip6_units=var_info["variable_units"],
+        cmip6_standard_name=var_info["cf_standard_name"],
+        cmip6_long_name=var_info["variable_long_name"],
+        ancillary_variables=uncert,
+        target_dtype=np.float32,
+        convert=False,
     )
-    out[v].attrs["ancillary_variables"] = uncert
-    out[uncert].attrs = {
-        "standard_name": f"{v} standard deviation",
-        "units": out[v].attrs["units"],
-    }
 
+    # format the ancillary var attrs
+    out[uncert].attrs = {
+        "standard_name": f"{var} standard_deviation",
+        "units": out[var].attrs["units"],
+    }
+    out[uncert].encoding["_FillValue"] = np.float32(1.0e20)
+
+    # set the global attrs
     out = ild.set_ods26_global_attrs(
         out,
         aux_uncertainty_id="sd",
-        comment="",
         contact="Sanaa Hobeichi (s.hobeichi@unsw.edu.au)",
         creation_date=generate_stamp,
         dataset_contributor="Nathan Collier",

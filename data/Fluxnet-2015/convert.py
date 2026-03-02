@@ -196,7 +196,7 @@ for varname in tqdm(ds, desc="Writing netcdf files"):
 {generate_stamp}: converted to obs4MIP format""",
         institution="The Fluxnet Community",
         institution_id="Fluxnet",
-        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution - 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
+        license="https://creativecommons.org/licenses/by/4.0/",
         nominal_resolution="site",
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/Fluxnet-2015/convert.py",
         product="site-observations",

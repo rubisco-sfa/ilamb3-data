@@ -38,10 +38,10 @@ ds["time"] = [cf.DatetimeGregorian(t.dt.year, t.dt.month, t.dt.day) for t in ds[
 ds = ild.set_time_attrs(
     ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(2003, 1, 1)
 )
-ds = ild.set_coord_bounds(ds, "lat")
-ds = ild.set_coord_bounds(ds, "lon")
 ds = ild.set_lat_attrs(ds)
 ds = ild.set_lon_attrs(ds)
+ds = ild.set_coord_bounds(ds, "lat")
+ds = ild.set_coord_bounds(ds, "lon")
 
 # write netcdf for each variable
 generate_stamp = time.strftime("%Y%m%d")
@@ -49,7 +49,9 @@ tracking_id = ild.gen_trackingid()
 variables = [v for v in ds if ("_sd" not in v and "_bnds" not in v)]
 for var in variables:
     uncert = f"{var}_sd"
-    out = ds.drop_vars([d for d in ds if d not in [var, uncert, "time_bnds"]])
+    out = ds.drop_vars(
+        [d for d in ds if d not in [var, uncert] and not d.endswith("_bnds")]
+    )
 
     # get standard/long name info and manage when it's not in cmip6 CV or is uncertainty
     if "_sd" not in var:
@@ -78,6 +80,9 @@ for var in variables:
         target_dtype=np.float32,
         convert=False,
     )
+
+    # drop some straggling attrs
+    out[var].attrs.pop("ALMA_short_name", None)
 
     # format the ancillary var attrs
     out[uncert].attrs = {

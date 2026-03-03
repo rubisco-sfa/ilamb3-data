@@ -1,8 +1,11 @@
 # Contribute Data to ILAMB
 
 [What data does ILAMB software ingest?](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#what-data-does-ilamb-software-ingest)
+
 [What does an ILAMB reference dataset NetCDF look like?](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#what-does-an-ilamb-reference-dataset-netcdf-look-like)
+
 [How to format an ILAMB-ready dataset](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#how-to-format-an-ilamb-ready-dataset)
+
 - [Create a GitHub Issue](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#1-create-a-github-issue-in-the-ilamb3-data-repository)
 - [Fork and clone the repository](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#2-fork-and-clone-the-ilamb3-data-repository-to-your-local-machine)
 - [Set up the working environment](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#3-set-up-the-ilamb3-data-working-environment)

@@ -14,7 +14,7 @@ from ilamb3_data import (
     set_coord_bounds,
     set_lat_attrs,
     set_lon_attrs,
-    set_ods_global_attrs,
+    set_ods26_global_attrs,
     set_time_attrs,
     set_var_attrs,
     standardize_dim_order,
@@ -62,7 +62,7 @@ ds = xr.Dataset(data_vars=data, coords=coords)
 vars = list(renaming_dict.values())
 var_info = []
 for var in vars:
-    info = get_cmip6_variable_info(var)
+    info = get_cmip6_variable_info(var, var)
     var_info.append(info)
 
 # Set correct attribute information for the vars
@@ -99,29 +99,23 @@ for var in vars:
     out_ds = ds.drop_vars(to_drop)
 
     # Set global attributes
-    out_df = set_ods_global_attrs(
+    out_df = set_ods26_global_attrs(
         out_ds,
-        activity_id="obs4MIPs",
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary",
         contact="Hamed Alemohammad (halemohammad@clarku.edu)",
-        conventions="CF-1.12 ODS-2.5",
         creation_date=creation_stamp,
         dataset_contributor="Morgan Steckler",
-        data_specs_version="ODS2.5",
-        doi="N/A",
-        external_variables="N/A",
         frequency="mon",
         grid="1x1 degree latitude x longitude",
         grid_label="gn",
-        has_auxdata="False",
         history=f"""
 {download_stamp}: downloaded {remote_source};
 {creation_stamp}: converted to obs4MIP format""",
         institution="Columbia University, NY, USA",
         institution_id="ColumbiaU",
-        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
-        nominal_resolution="100 km",
-        processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/WECANN/convert.py",
+        license="https://avdc.gsfc.nasa.gov/pub/data/project/WECANN/WECANN_Readme.pdf",
+        nominal_resolution="1 degree",
+        processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/WECANN-1-0/convert.py",
         product="derived",
         realm="land",
         references="Alemohammad, S. H., Fang, B., Konings, A. G., Aires, F., Green, J. K., Kolassa, J., Miralles, D., Prigent, C., and Gentine, P.: Water, Energy, and Carbon with Artificial Neural Networks (WECANN): a statistically based estimate of global surface turbulent fluxes and gross primary productivity using solar-induced fluorescence, Biogeosciences, 14, 4101–4124, https://doi.org/10.5194/bg-14-4101-2017, 2017.",
@@ -136,8 +130,8 @@ for var in vars:
         title="Water, Energy, and Carbon with Artificial Neural Networks (WECANN)",
         tracking_id=tracking_id,
         variable_id=var,
-        variant_label="REF",
-        variant_info="CMORized product prepared by ILAMB and CMIP IPO",
+        variant_label="ILAMB",
+        variant_info="CMORized product prepared by ILAMB",
         version=f"v{today_stamp}",
     )
 

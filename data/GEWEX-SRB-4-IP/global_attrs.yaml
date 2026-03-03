@@ -20,33 +20,27 @@ dataset:
   institution: "NASA-LaRC (Langley Research Center) Hampton, Va"
   institution_id: NASA-LaRC
   contact: "Seiji Kato (seiji.kato@nasa.gov)"
-
 license:
-  license: >
-    Data in this file produced by ILAMB is licensed under a Creative Commons
-    Attribution - 4.0 International (CC BY - 4.0) License
-    (https://creativecommons.org/licenses/).
-
+  license: >-
+    https://science.larc.nasa.gov/gewex-srb/data-usage-acknowledgement/
 references:
-  references: >
+  references: >-
     Cox, Stephen J., Paul W. Stackhouse, Jr., Shashi K. Gupta,
     J. Colleen Mikovitz, and Taiping Zhang, 2017:
     NASA/GEWEX shortwave surface radiation budget: Integrated data
     product with reprocessed radiance, cloud, and meteorology inputs,
     and new surface albedo treatment. AIP Conference Proceedings,
     1810, 090001(2017), doi:10.1063/1.4975541.
-
 processing:
-  processing_code_location: >
-    https://github.com/rubisco-sfa/ilamb3-data/tree/main/data/
+  processing_code_location: >-
+    https://github.com/rubisco-sfa/ilamb3-data/tree/main/data
   creation_date: null
   dataset_contributor: "Min Xu"
   history: null
   source_data_retrieval_date: null
   title: null
-  
 data_doi:
-  doi: 
-    - https://doi.org/9.5067/GEWEXSRB/Rel4-IP_Longwave_monthly_utc_1
-    - https://doi.org/10.5067/GEWEXSRB/Rel4-IP_Shortwave_monthly_utc_1
+  doi: >-
+    https://doi.org/9.5067/GEWEXSRB/Rel4-IP_Longwave_monthly_utc_1
+    https://doi.org/10.5067/GEWEXSRB/Rel4-IP_Shortwave_monthly_utc_1
 

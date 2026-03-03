@@ -103,7 +103,7 @@ for var in vars:
 """,
         institution="NASA-LaRC (Langley Research Center) Hampton, Va",
         institution_id="NASA-LaRC",
-        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution - 4.0 International (CC BY - 4.0) License (https://creativecommons.org/licenses/).",
+        license="https://creativecommons.org/public-domain/cc0/",
         nominal_resolution="1 degree",
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/tree/main/data/CERES-4-2-1/convert.py",
         product="derived",

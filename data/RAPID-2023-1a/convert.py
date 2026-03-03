@@ -12,7 +12,7 @@ from ilamb3_data import (
     get_cmip6_variable_info,
     set_depth_attrs,
     set_lat_attrs,
-    set_ods_global_attrs,
+    set_ods26_global_attrs,
     set_time_attrs,
     set_var_attrs,
     standardize_dim_order,
@@ -68,7 +68,7 @@ ds = ds.drop_vars([v for v in ds.data_vars if v != "moc_mar_hc10"]).rename_vars(
 ds["msftmz"] = ds["msftmz"].expand_dims({"depth": ds["depth"], "lat": ds["lat"]})
 
 # Set var attrs
-var_info = get_cmip6_variable_info("msftmz")
+var_info = get_cmip6_variable_info("msftmz", "msftmz")
 ds = set_var_attrs(
     ds,
     var="msftmz",
@@ -89,34 +89,28 @@ ds = set_depth_attrs(
     positive="down",
     long_name="depth of sea water",
 )
-
 ds = standardize_dim_order(ds)
 
 # Set global attributes and export
-out_ds = set_ods_global_attrs(
+out_ds = set_ods26_global_attrs(
     ds,
-    activity_id="obs4MIPs",
     comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
     contact="Ben Moat (ben.moat@noc.ac.uk)",
-    conventions="CF-1.12 ODS-2.5",
     creation_date=creation_stamp,
     dataset_contributor="Morgan Steckler",
-    data_specs_version="2.5",
     doi="10.5285/33826d6e-801c-b0a7-e063-7086abc0b9db",
-    external_variables="N/A",
     frequency="mon",
     grid="global mean data",
     grid_label="gm",
-    has_auxdata="False",
     history=f"""
 {download_stamp}: downloaded {remote_source};
 {today_stamp}: aggregated 12-hour timeseries to monthly;
 {creation_stamp}: converted to obs4MIPs format""",
     institution="National Oceanography Centre, UK",
     institution_id="NOC",
-    license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
+    license="https://www.nationalarchives.gov.uk/doc/open-government-licence/version/3/",
     nominal_resolution="site",
-    processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/RAPID/convert.py",
+    processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/RAPID-2023-1a/convert.py",
     product="derived",
     realm="ocean",
     references="Moat, B.I., Smeed, D.A., Rayner, D., Johns, W.E., Smith, R., Volkov, D., Elipot, S., Petit, T., Kajtar, J., Baringer, M.O., Collins, J. (2025). Atlantic meridional overturning circulation observed by the RAPID-MOCHA-WBTS (RAPID-Meridional Overturning Circulation and Heatflux Array-Western Boundary Time Series) array at 26N from 2004 to 2023 (v2023.1a), British Oceanographic Data Centre - Natural Environment Research Council, UK. https://doi.org/10.5285/33826d6e-801c-b0a7-e063-7086abc0b9db",
@@ -131,8 +125,8 @@ out_ds = set_ods_global_attrs(
     title="RAPID AMOC observations (v2023.1a)",
     tracking_id=tracking_id,
     variable_id="msftmz",
-    variant_label="REF",
-    variant_info="CMORized product prepared by ILAMB and CMIP IPO",
+    variant_label="ILAMB",
+    variant_info="CMORized product prepared by ILAMB",
     version=f"v{today_stamp}",
 )
 

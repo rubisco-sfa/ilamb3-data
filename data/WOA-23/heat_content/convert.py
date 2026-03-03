@@ -15,7 +15,7 @@ from ilamb3_data import (
     set_depth_attrs,
     set_lat_attrs,
     set_lon_attrs,
-    set_ods_global_attrs,
+    set_ods26_global_attrs,
     set_time_attrs,
     set_var_attrs,
     standardize_dim_order,
@@ -75,8 +75,8 @@ ds = xr.decode_cf(ds, decode_times=time_coder)
 # Set global ohc and ohc_error
 ds["ohc"] = ds["yearl_h22_WO"].rename("ohc")
 ds["ohc"] = (ds["ohc"] * 10).astype(np.float64)
-ds["ohc_se"] = ds["yearl_h22_se_WO"].rename("ohc_se")
-ds["ohc_se"] = (ds["ohc_se"] * 10).astype(np.float64)
+ds["ohc_stderr"] = ds["yearl_h22_se_WO"].rename("ohc_stderr")
+ds["ohc_stderr"] = (ds["ohc_stderr"] * 10).astype(np.float64)
 
 # Set ohc variable attrs
 ds = set_var_attrs(
@@ -84,19 +84,19 @@ ds = set_var_attrs(
     var="ohc",
     cmip6_units="ZJ",
     cmip6_standard_name="ocean_heat_content_anomaly",
-    cmip6_long_name="global annual ocean (0-2000m depth) heat content anomaly (WOA09 1955-2006 baseline)",
-    ancillary_variables="ohc_se",
+    cmip6_long_name="Global Annual Ocean (0-2000m Depth) Heat Content Anomaly (WOA09 1955-2006 Baseline)",
+    ancillary_variables="ohc_stderr",
     cell_methods=None,
     target_dtype=np.float64,
     convert=False,
 )
 
 # Set ancillary variables attrs
-ds["ohc_se"].attrs = {
+ds["ohc_stderr"].attrs = {
     "standard_name": "ocean_heat_content_anomaly standard_error",
     "units": "ZJ",
 }
-ds["ohc_se"].encoding = {"_FillValue": None}
+ds["ohc_stderr"].encoding = {"_FillValue": None}
 
 ##########################################################################################
 # ohc_Jm2
@@ -131,7 +131,7 @@ ds = set_var_attrs(
     var="ohcJm2",
     cmip6_units="J m-2",
     cmip6_standard_name="integral_wrt_depth_of_sea_water_potential_temperature_expressed_as_heat_content",
-    cmip6_long_name="depth-integrated ocean heat content anomaly (WOA09 1955-2006 baseline) computed as the integral over depth of sea water (0-2000m) potential temperature",
+    cmip6_long_name="Depth-Integrated Ocean Heat Content Anomaly (WOA09 1955-2006 Baseline) Computed As The Integral Over Depth of Sea Water (0-2000m) Potential Temperature",
     ancillary_variables=None,
     cell_methods="area: mean depth: mean time: mean",  # this came from the original dataset, so I'll keep it
     target_dtype=np.float32,
@@ -183,14 +183,14 @@ for var in ["ohcJm2", "ohc"]:
         out_ds = standardize_dim_order(out_ds)
         out_ds["time"].encoding = {"_FillValue": None}
     else:
-        out_ds = ds[base_vars + [var, "ohc_se"]]
+        out_ds = ds[base_vars + [var, "ohc_stderr"]]
         out_ds = out_ds.drop_dims(["lat", "lon"])
         orig_attrs, orig_encoding = (
             out_ds["depth"].attrs.copy(),
             out_ds["depth"].encoding.copy(),
         )
         # this resets the depth attrs/encoding
-        out_ds[[var, "ohc_se"]] = out_ds[[var, "ohc_se"]].expand_dims(
+        out_ds[[var, "ohc_stderr"]] = out_ds[[var, "ohc_stderr"]].expand_dims(
             dim={"depth": ds["depth"]}
         )
         # so I have to set them again
@@ -205,36 +205,31 @@ for var in ["ohcJm2", "ohc"]:
         "title": f"{ohc_title if var == 'ohc' else ohc_jm2_title}",
         "grid": f"{'1x1 degree latitude x longitude' if var == 'ohcJm2' else 'global mean data'}",
         "grid_label": f"{'gm' if var == 'ohc' else 'gn'}",
-        "nominal_resolution": f"{'1x1 degree' if var == 'ohcJm2' else 'site'}",
-        "aux_variable_id": f"{'ohc_se' if var == 'ohc' else 'N/A'}",
-        "has_auxdata": f"{'True' if var == 'ohc' else 'False'}",
+        "nominal_resolution": f"{'1 degree' if var == 'ohcJm2' else 'site'}",
+        "aux_uncertainty_id": f"{'stderr' if var == 'ohc' else 'N/A'}",
+        "has_aux_unc": f"{'TRUE' if var == 'ohc' else 'FALSE'}",
     }
 
     # Set global attributes
-    out_ds = set_ods_global_attrs(
+    out_ds = set_ods26_global_attrs(
         out_ds,
-        activity_id="obs4MIPs",
-        aux_variable_id=dynamic_attrs["aux_variable_id"],
+        aux_uncertainty_id=dynamic_attrs["aux_uncertainty_id"],
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
         contact="NOAA National Centers for Environmental Information (ncei.info@noaa.gov)",
-        conventions="CF-1.12 ODS-2.5",
         creation_date=creation_stamp,
         dataset_contributor="Morgan Steckler",
-        data_specs_version="2.5",
-        doi="N/A",
-        external_variables="N/A",
         frequency="yr",
         grid=dynamic_attrs["grid"],
         grid_label=dynamic_attrs["grid_label"],
-        has_auxdata=dynamic_attrs["has_auxdata"],
+        has_aux_unc=dynamic_attrs["has_aux_unc"],
         history=f"""
     {download_stamp}: downloaded {remote_source};
     {creation_stamp}: converted to obs4MIPs format""",
         institution="National Oceanic and Atmospheric Administration, National Centers for Environmental Information, Ocean Climate Laboratory, Asheville, NC, USA",
         institution_id="NOAA-NCEI-OCL",
-        license="Data in this file produced by ILAMB is licensed under a Creative Commons Attribution- 4.0 International (CC BY 4.0) License (https://creativecommons.org/licenses/).",
+        license="https://creativecommons.org/publicdomain/zero/1.0/",
         nominal_resolution=dynamic_attrs["nominal_resolution"],
-        processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/NOAA/convert.py",
+        processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/WOA-23/heat_content/convert.py",
         product="observations",
         realm="ocean",
         references="S. Levitus, J. I. Antonov, T. P. Boyer, O. K. Baranova, H. E. Garcia, R. A. Locarnini, A. V. Mishonov, J. R. Reagan, D. Seidov, E. S. Yarosh, M. M. Zweng, World ocean heat content and thermosteric sea level change (0-2000 m), Geophysical Research Letters. 1955-2010. 10.1029/2012GL051106",
@@ -249,8 +244,8 @@ for var in ["ohcJm2", "ohc"]:
         title=dynamic_attrs["title"],
         tracking_id=tracking_id,
         variable_id=var,
-        variant_label="REF",
-        variant_info="CMORized product prepared by ILAMB and CMIP IPO",
+        variant_label="ILAMB",
+        variant_info="CMORized product prepared by ILAMB",
         version=f"v{today_stamp}",
     )
 

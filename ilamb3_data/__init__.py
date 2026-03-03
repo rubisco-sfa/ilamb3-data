@@ -1061,7 +1061,6 @@ def set_ods26_global_attrs(
     gridlabel_cv = load_json_from_url(base_url + "obs4MIPs_grid_label.json")
     # hasauxunc_cv = load_json_from_url(base_url + "obs4MIPs_has_aux_unc.json")
     instid_cv = load_json_from_url(base_url + "obs4MIPs_institution_id.json")
-    license_cv = load_json_from_url(base_url + "obs4MIPs_license.json")
     nomres_cv = load_json_from_url(base_url + "obs4MIPs_nominal_resolution.json")
     product_cv = load_json_from_url(base_url + "obs4MIPs_product.json")
     realm_cv = load_json_from_url(base_url + "obs4MIPs_realm.json")
@@ -1072,7 +1071,7 @@ def set_ods26_global_attrs(
     siteid_cv = load_json_from_url(base_url + "obs4MIPs_site_id.json")
     sourceid_cv = load_json_from_url(base_url + "obs4MIPs_source_id.json")
     sourcetype_cv = load_json_from_url(base_url + "obs4MIPs_source_type.json")
-    tableid_cv = load_json_from_url(base_url + "obs4MIPs_table_id.json")
+    # tableid_cv = load_json_from_url(base_url + "obs4MIPs_table_id.json")
 
     # Fill in required global attributes
     attrs = {

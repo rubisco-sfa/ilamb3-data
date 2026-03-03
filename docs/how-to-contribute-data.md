@@ -1,23 +1,20 @@
 # Contribute Data to ILAMB
 
-[What data does ILAMB software ingest?](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#what-data-does-ilamb-software-ingest)
-
-[What does an ILAMB reference dataset NetCDF look like?](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#what-does-an-ilamb-reference-dataset-netcdf-look-like)
-
-[How to format an ILAMB-ready dataset](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#how-to-format-an-ilamb-ready-dataset)
-
-- [Create a GitHub Issue](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#1-create-a-github-issue-in-the-ilamb3-data-repository)
-- [Fork and clone the repository](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#2-fork-and-clone-the-ilamb3-data-repository-to-your-local-machine)
-- [Set up the working environment](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#3-set-up-the-ilamb3-data-working-environment)
-- [Write the formatting script](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#4-write-the-formatting-script)
-    - [Import libraries and functions](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#41-import-libraries-and-functions)
-    - [Download the data](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#42-download-the-data)
-    - [Convert variables names to CMIP6 standard names](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#43-convert-variables-names-to-cmip6-standard-names-when-possible)
-    - [Set up temporal coordinates and bounds](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#44-set-up-the-temporal-coordinates-and-bounds)
-    - [Set up spatial coordinates and bounds](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#45-set-up-the-spatial-coordinates-and-bounds)
-    - [Set up variable attributes](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#46-set-up-the-variable-attributes)
-    - [Set up global attributes and export](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#47-set-up-the-global-attributes-and-export-an-ilamb-ready-netcdf)
-- [Submit a pull request](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#5-create-a-pull-request)
+- [What data does ILAMB software ingest?](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#what-data-does-ilamb-software-ingest)
+- [What does an ILAMB reference dataset NetCDF look like?](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#what-does-an-ilamb-reference-dataset-netcdf-look-like)
+- [How to format an ILAMB-ready dataset](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#how-to-format-an-ilamb-ready-dataset)
+    - [Create a GitHub Issue](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#1-create-a-github-issue-in-the-ilamb3-data-repository)
+    - [Fork and clone the repository](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#2-fork-and-clone-the-ilamb3-data-repository-to-your-local-machine)
+    - [Set up the working environment](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#3-set-up-the-ilamb3-data-working-environment)
+    - [Write the formatting script](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#4-write-the-formatting-script)
+        - [Import libraries and functions](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#41-import-libraries-and-functions)
+        - [Download the data](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#42-download-the-data)
+        - [Convert variables names to CMIP6 standard names](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#43-convert-variables-names-to-cmip6-standard-names-when-possible)
+        - [Set up temporal coordinates and bounds](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#44-set-up-the-temporal-coordinates-and-bounds)
+        - [Set up spatial coordinates and bounds](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#45-set-up-the-spatial-coordinates-and-bounds)
+        - [Set up variable attributes](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#46-set-up-the-variable-attributes)
+        - [Set up global attributes and export](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#47-set-up-the-global-attributes-and-export-an-ilamb-ready-netcdf)
+- [How to add formatted data to ilamb3-data]()
 
 ---
 
@@ -25,12 +22,12 @@ ILAMB only ingests data stored in a particular file format. This means that the 
 
 But what if you want to benchmark using a reference dataset that we haven’t prepared, and you don’t want to spend hours trying to format it to work in ILAMB? We have created tools for you to quickly and properly format an ILAMB-ready dataset. Once a dataset is ILAMB-ready, it can be added to the ILAMB data registry for any user to access, and you will have contributed to the development of ILAMB software!
 
-
+---
 ## What data does ILAMB software ingest?
 
 ILAMB-ready data are stored as [NetCDFs](https://www.unidata.ucar.edu/software/netcdf/), and they adhere to community formatting conventions. Each NetCDF contains one data variable (with an optional uncertainty variable), relevant dimensions (like latitude, longitude, time, depth, etc.), global attributes (metadata), and is gridded or site-level.
 
-
+---
 ## What does an ILAMB reference dataset NetCDF look like?
 
 Let’s walk through the structure of a gridded dataset that is both ILAMB-ready and adheres to community-defined formatting standards. In this example, we have a precipitation variable from the Conserving Land-Atmosphere Synthesis Suite (CLASS) version 1.1 that is ILAMB-ready. You can [download the NetCDF](https://www.ilamb.org/ilamb3-data/CLASS-1-1/obs4MIPs_UNSW_CLASS-1-1_mon_pr_gn_v20260302.nc) onto your machine and use the command `ncdump` to display the header of the file:
@@ -107,7 +104,7 @@ Now, we can dive into the data itself. We have a precipitation variable, pr, whi
 
 While adhering data to community standards is great, you can imagine that formatting your data to look like this would usually be painstaking, extremely detail-oriented, and prone to error. That’s why we have built all the tools you need to format your data quickly, without having to know all of the community conventions.
 
-
+---
 ## How to format an ILAMB-ready dataset
 ### 1. Create a GitHub Issue in the ilamb3-data repository
 
@@ -454,7 +451,7 @@ Finally, we can add global attributes (metadata) to the Dataset. Global attribut
 After the global attributes are set, we create an output filename using the `create_output_filename()` function, which uses the global attributes to create a standardized filename in the format: `variable_id_source_id_variant_label_table_id_version.nc`. Finally, we export the Dataset as a NetCDF to the `output/` directory. This NetCDF is now ILAMB-ready and can be used as a reference dataset in ILAMB.
 
 
-### 5. Create a pull request
+## How to add formatted data to ilamb3-data
 
 Once you have produced your NetCDF, you can check the formatting using `ncdump` or display the dataset in xarray. You should also plot your data and visually inspect it to make sure it looks correct; we recommend doing this with xarray `.plot()` or using `ncview` in the command line. If everything looks good, you can push your changes to your fork and then create a pull request to merge your changes into the main ilamb3-data repository. At this point, we will review your formatting script and the resultant NetCDF. We will request changes if they need to be made, but if everything looks good, we can merge it into the main repository so that others can use it as a reference dataset in ILAMB.
 

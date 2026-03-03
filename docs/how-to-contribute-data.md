@@ -1,12 +1,32 @@
 # Contribute Data to ILAMB
 
+I. [What data does ILAMB software ingest?](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#what-data-does-ilamb-software-ingest)
+II. [What does an ILAMB reference dataset NetCDF look like?](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#what-does-an-ilamb-reference-dataset-netcdf-look-like)
+III. [How to format an ILAMB-ready dataset](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#how-to-format-an-ilamb-ready-dataset)
+    1. [Create a GitHub Issue](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#1-create-a-github-issue-in-the-ilamb3-data-repository)
+    2. [Fork and clone the repository](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#2-fork-and-clone-the-ilamb3-data-repository-to-your-local-machine)
+    3. [Set up the working environment](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#3-set-up-the-ilamb3-data-working-environment)
+    4. [Write the formatting script](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#4-write-the-formatting-script)
+        4.1. [Import libraries and functions](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#41-import-libraries-and-functions)
+        4.2. [Download the data](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#42-download-the-data)
+        4.3. [Convert variables names to CMIP6 standard names](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#43-convert-variables-names-to-cmip6-standard-names-when-possible)
+        4.4. [Set up temporal coordinates and bounds](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#44-set-up-the-temporal-coordinates-and-bounds)
+        4.5. [Set up spatial coordinates and bounds](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#45-set-up-the-spatial-coordinates-and-bounds)
+        4.6. [Set up variable attributes](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#46-set-up-the-variable-attributes)
+        4.7. [Set up global attributes and export](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#47-set-up-the-global-attributes-and-export-an-ilamb-ready-netcdf)
+    5. [Submit a pull request](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#5-create-a-pull-request)
+
+---
+
 ILAMB only ingests data stored in a particular file format. This means that the software may fail to run if the benchmarking data are not formatted in a way that ILAMB can understand. So, ILAMB comes pre-equipped with data that are already formatted and usable by the software. 
 
 But what if you want to benchmark using a reference dataset that we haven’t prepared, and you don’t want to spend hours trying to format it to work in ILAMB? We have created tools for you to quickly and properly format an ILAMB-ready dataset. Once a dataset is ILAMB-ready, it can be added to the ILAMB data registry for any user to access, and you will have contributed to the development of ILAMB software!
 
+
 ## What data does ILAMB software ingest?
 
 ILAMB-ready data are stored as [NetCDFs](https://www.unidata.ucar.edu/software/netcdf/), and they adhere to community formatting conventions. Each NetCDF contains one data variable (with an optional uncertainty variable), relevant dimensions (like latitude, longitude, time, depth, etc.), global attributes (metadata), and is gridded or site-level.
+
 
 ## What does an ILAMB reference dataset NetCDF look like?
 
@@ -84,12 +104,14 @@ Now, we can dive into the data itself. We have a precipitation variable, pr, whi
 
 While adhering data to community standards is great, you can imagine that formatting your data to look like this would usually be painstaking, extremely detail-oriented, and prone to error. That’s why we have built all the tools you need to format your data quickly, without having to know all of the community conventions.
 
+
 ## How to format an ILAMB-ready dataset
 ### 1. Create a GitHub Issue in the ilamb3-data repository
 
 First, let us know that you're working on formatting a dataset by creating a GitHub Issue in the ilamb3-data repository. This way, we can keep track of the datasets that are being worked on, and we can also help you if you have any questions along the way. To create an issue, visit https://github.com/rubisco-sfa/ilamb3-data/issues. Click on “New Issue,” and then fill out the template with the name of the dataset you are working on, a brief description of the dataset, and any relevant links or other information. This will help us understand what you are working on so we can properly assist you. You can look at current and closed Issues to see how we have been writing them.
 
 If you run into any bugs, or you have an idea for a new function that would make formatting easier, please also create an Issue to let us know. We are always looking for ways to improve ilamb3-data, and we appreciate any feedback you have.
+
 
 ### 2. Fork and clone the ilamb3-data repository to your local machine
 
@@ -109,6 +131,7 @@ git remote add upstream https://github.com/rubisco-sfa/ilamb3-data.git
 git remote -v
 git fetch upstream
 ```
+
 
 ### 3. Set up the ilamb3-data working environment
 
@@ -137,6 +160,7 @@ vi convert.py  # this creates the Python formatting script; you can call it what
 
 Now that you’ve created the Python script, you can use your favorite code editor to write in it (e.g., VSCode, JupyterLab, etc.). You might also create a `convert.ipynb` if you prefer to draft code in blocks before transferring it to the final convert.py.
 
+
 ### 4. Write the formatting script
 
 We store these formatting scripts on the ilamb3-data GitHub repository so that we have a record of how we formatted the data. This helps us debug any errors that we find, and two years from now, we can know exactly what we were thinking when we formatted a dataset. Further, if we make any big changes to how we format ILAMB data, we can now just re-run all the scripts to get new ILAMB versions of the data.
@@ -146,6 +170,7 @@ A formatting script does only 3 things:
 - Downloads the data (or provides instructions on how to access it)
 - Formats the data
 - Exports a NetCDF that is ready to use in ILAMB
+
 
 #### 4.1. Import libraries and functions
 
@@ -161,6 +186,7 @@ import xarray as xr  # xarray is great for working with multi-dimensional tifs/t
 
 import ilamb3_data as ild  # this is the library we built with all the formatting tools you need
 ```
+
 
 #### 4.2. Download the data
 
@@ -193,6 +219,7 @@ for remote_source, local_source in zip(remote_sources, local_sources):
         ild.download_from_html(remote_source, local_source)  # you can find our built-in functions at ilamb3-data/ilamb3_data
     download_stamp = ild.gen_utc_timestamp(Path(local_source).stat().st_mtime)  # save when the data were downloaded; this will go in our global attrs later
 ```
+
 
 #### 4.3. Convert variables names to CMIP6 standard names when possible
 
@@ -232,6 +259,7 @@ There are also two legacy suffixes that can be used:
 
 If you find that your uncertainty data does not fit into any of these categories, you can create your own suffix, but you must define it in the variable metadata. In this case, we have standard deviation on the mean, so we can use the legacy suffix of `_sd`.
 
+
 #### 4.4. Set up the temporal coordinates and bounds
 
 Now that the variables are named properly, we can fix up the coordinates: time, latitude, and longitude, as well as the bnds dimension. You should always inspect the time coordinates before manipulating them. Commonly, the time coordinates are relative to a reference date, e.g., in "days since YYY-MM-DD". If that's the case, you can parse the "days since YYY-MM-DD" integers into `cf.datetime` objects using the `cftime` library we imported earlier. 
@@ -255,6 +283,7 @@ The function `set_time_attrs()` can do several things. It always ingests an xr.D
 
 [!HINT] Sometimes, data creators set the time units to something like "months since YYY-MM-DD." This violates CF Conventions and is not legible by xarray. When you try to read a dataset like this into xarray, it will fail. See how we handled a case like this in the WOA-23 heat content [formatting script](/Users/6ru/Desktop/ilamb3-data/data/WOA-23/heat_content/convert.py).
 
+
 #### 4.5. Set up the spatial coordinates and bounds
 
 Next, we can set up the latitude and longitude coordinates and bounds. We have a built-in function called `set_lat_attrs()`, `set_lon_attrs()`, and `set_depth_attrs()` that can do this for you. These functions will automatically add the necessary attributes and encoding, such as `axis`, `long_name`, and `standard_name`. Then, we have `set_coord_bounds()` to add bounds to any coordinate that needs a bnds dimension. Usually this will be used on latitude, longitude, and/or depth.
@@ -265,6 +294,7 @@ ds = ild.set_lon_attrs(ds)
 ds = ild.set_coord_bounds(ds, "lat")
 ds = ild.set_coord_bounds(ds, "lon")
 ```
+
 
 #### 4.6. Set up the variable attributes
 
@@ -328,6 +358,7 @@ After we set up the variable attributes, we drop some straggling unnecessary inf
     out[uncert].encoding["_FillValue"] = np.float32(1.0e20)  # this is the standard _FillValue for float32 variables
 ```
 
+
 #### 4.7. Set up the global attributes and export an ILAMB-ready NetCDF
 
 Finally, we can add global attributes (metadata) to the Dataset. Global attributes are important because they provide context and information about the dataset as a whole. They can include things like the title of the dataset, the source of the data, the history of how the data were processed, etc. We have a built-in function called `set_ods26_global_attrs()` that sets the global attributes to adhere to obs4MIPs Data Specifications (ODS) 2.6. The function will display warnings when required attributes are missing or incorrect. We begin by looping through each variable so that we end up with one variable per NetCDF, which is the format that ILAMB can interpret. An uncertainty variable is allowed, but any other variables that are not the main variable or its uncertainty should be removed from the Dataset before exporting.
@@ -374,7 +405,7 @@ Finally, we can add global attributes (metadata) to the Dataset. Global attribut
     out.to_netcdf(out_path)
 ```
 
-Here is a cheat sheet for setting the global attributes:
+##### ODS2.6 Global Attributes Cheatsheet
 
 - `ds` (xr.Dataset): The xarray dataset to which global attributes will be added
 - `activity_id` (str, optional): Name of the MIP activity the dataset is part of, default is "obs4MIPs"; this is the project name used in the ESGF archive
@@ -418,6 +449,7 @@ Here is a cheat sheet for setting the global attributes:
 - `version` (str, optional): Version of the dataset instance created by the data contributor; for ILAMB, we format it as "vYYYYMMDD", where the date is when the formatting script was executed and the NetCDFs were created
 
 After the global attributes are set, we create an output filename using the `create_output_filename()` function, which uses the global attributes to create a standardized filename in the format: `variable_id_source_id_variant_label_table_id_version.nc`. Finally, we export the Dataset as a NetCDF to the `output/` directory. This NetCDF is now ILAMB-ready and can be used as a reference dataset in ILAMB.
+
 
 ### 5. Create a pull request
 

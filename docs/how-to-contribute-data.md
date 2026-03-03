@@ -14,7 +14,7 @@
         - [Set up spatial coordinates and bounds](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#45-set-up-the-spatial-coordinates-and-bounds)
         - [Set up variable attributes](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#46-set-up-the-variable-attributes)
         - [Set up global attributes and export](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#47-set-up-the-global-attributes-and-export-an-ilamb-ready-netcdf)
-- [How to add formatted data to ilamb3-data]()
+- [How to add formatted data to ilamb3-data](https://github.com/rubisco-sfa/ilamb3-data/blob/add-data-doc/docs/how-to-contribute-data.md#how-to-add-formatted-data-to-ilamb3-data)
 
 ---
 

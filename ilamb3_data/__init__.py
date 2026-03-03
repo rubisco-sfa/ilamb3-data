@@ -550,12 +550,19 @@ def set_lat_attrs(ds: xr.Dataset) -> xr.Dataset:
     """
     assert "lat" in ds
     da = ds["lat"]
+
+    bounds = da.attrs.get("bounds")
+
     da.attrs = {
         "axis": "Y",
         "units": "degrees_north",
         "standard_name": "latitude",
         "long_name": "Latitude",
     }
+
+    if bounds is not None:
+        da.attrs["bounds"] = bounds
+
     da.encoding.clear()
     da.encoding = {"_FillValue": None, "dtype": "float64"}
     ds["lat"] = da
@@ -568,12 +575,19 @@ def set_lon_attrs(ds: xr.Dataset) -> xr.Dataset:
     """
     assert "lon" in ds
     da = ds["lon"]
+
+    bounds = da.attrs.get("bounds")
+
     da.attrs = {
         "axis": "X",
         "units": "degrees_east",
         "standard_name": "longitude",
         "long_name": "Longitude",
     }
+
+    if bounds is not None:
+        da.attrs["bounds"] = bounds
+
     da.encoding.clear()
     da.encoding = {"_FillValue": None, "dtype": "float64"}
     ds["lon"] = da

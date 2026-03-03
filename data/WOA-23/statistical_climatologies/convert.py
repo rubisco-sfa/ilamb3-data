@@ -156,8 +156,13 @@ for name, period_dict in local_source_dict.items():
             .rename_dims({"nbounds": "bnds"})
         )
 
-        # Variable attrs (example units; adjust per variable if needed)
-        ds[std_var].attrs["units"] = "umol kg-1"
+        # Set variable attrs
+        if std_var == "thetao":
+            ds[std_var].attrs["units"] = "degC"
+        elif std_var == "so":
+            ds[std_var].attrs["units"] = "1"
+        else:
+            ds[std_var].attrs["units"] = "umol kg-1"
         ds = set_var_attrs(
             ds,
             var=std_var,

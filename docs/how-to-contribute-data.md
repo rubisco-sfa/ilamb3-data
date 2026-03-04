@@ -159,8 +159,7 @@ Now you can use our Python functions to format your data. To deactivate the envi
 ```bash
 cd ilamb3-data/data
 mkdir EXAMPLE-1-0  # we prefer to name these folders after the source and version of the dataset
-vi convert.py  # this creates the Python formatting script; you can call it whatever you want, e.g., format.py, process.py, etc.
-:wq  # this writes the file and quits the vi editor
+touch convert.py  # this creates the Python formatting script; you can call it whatever you want, e.g., format.py, process.py, etc.
 ```
 
 Now that you’ve created the Python script, you can use your favorite code editor to write in it (e.g., VSCode, JupyterLab, etc.). You might also create a `convert.ipynb` if you prefer to draft code in blocks before transferring it to the final convert.py.
@@ -198,7 +197,7 @@ import ilamb3_data as ild  # this is the library we built with all the formattin
 
 #### 4.2. Download the data
 
-Then, we download the data. First, we create a directory called `_raw`, which is where we will store the raw (pre-formatted) data. We like to use the `Path` library because it is simpler and more robust than `os` or `shutil`. If the directory already exists, that's fine. If it doesn't yet exist, it will be created.
+Then, we download the data. First, we create a directory called `_raw`, which is where we will store the raw (pre-formatted) data. We like to use the `Path` library because it is platform independent, simpler, and more robust than `os` or `shutil`. If the directory already exists, that's fine. If it doesn't yet exist, it will be created.
 
 ```python
 RAW_PATH = Path("_raw")

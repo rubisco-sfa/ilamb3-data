@@ -30,44 +30,168 @@ ILAMB-ready data are stored as [NetCDFs](https://www.unidata.ucar.edu/software/n
 
 Here is a summary of the data we already have ingested:
 
-| Category | Variable | Data Sources |
-|---|---|---|
-| Atmospheric Composition | Carbon Dioxide | NOAA.GMD, HIPPOAToM |
-| Atmospheric Composition | Methane | FluxnetANN |
-| Ecosystem Processes and States | Diurnal Max Temperature | CRU4.02 |
-| Ecosystem Processes and States | Diurnal Min Temperature | CRU4.02 |
-| Ecosystem Processes and States | Diurnal Temperature Range | CRU4.02 |
-| Ecosystem Processes and States | Ecosystem Respiration | Fluxnet-2015, FLUXCOM-1 |
-| Ecosystem Processes and States | Global Net Ecosystem Carbon Balance | Hoffman-1-0, GCP |
-| Ecosystem Processes and States | Gross Primary Productivity | Fluxnet-2015, FLUXCOM-1, WECANN-1-0 |
-| Ecosystem Processes and States | Net Ecosystem Exchange | Fluxnet-2015 |
-| Land Surface Hydrology | Active Layer Thickness | CALM |
-| Land Surface Hydrology | Evapotranspiration | GLEAMv3.3a, MOD16A2, MODIS |
-| Land Surface Hydrology | Ground Heat Flux | CLASS-1-1 |
-| Land Surface Hydrology | Permafrost | Obu2018, Brown2002 |
-| Land Surface Hydrology | Runoff | CLASS-1-1, Dai, LORA-1-0 |
-| Land Surface Hydrology | Snow Cover | CCI-CryoClim-FSC-1 |
-| Land Surface Hydrology | Snow Water Equivalent | CanSISE |
-| Land Surface Hydrology | Surface Soil Moisture | WangMao |
-| Land Surface Hydrology | Terrestrial Water Storage Anomaly | GRACE |
-| Soil Organic Matter and Nutrient Biogeochemistry | Nitrogen Fixation | Davies-Barnard |
-| Soil Organic Matter and Nutrient Biogeochemistry | Soil Carbon | HWSD, NCSCDV22, wang2024_cSoil, HWSD-2-0, soilgrids2 |
-| Surface Energy Fluxes | Albedo | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP |
-| Surface Energy Fluxes | Latent Heat | CLASS-1-1, WECANN-1-0, Fluxnet-2015, DOLCE, FLUXCOM-1 |
-| Surface Energy Fluxes | Precipitation | CLASS-1-1, CMAPv1904, GPCPv2.3, Fluxnet-2015, GPCCv2018 |
-| Surface Energy Fluxes | Sensible Heat | Fluxnet-2015, FLUXCOM-1, WECANN-1-0, CLASS-1-1 |
-| Surface Energy Fluxes | Surface Air Temperature | Fluxnet-2015, CRU4.02 |
-| Surface Energy Fluxes | Surface Downward Longwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
-| Surface Energy Fluxes | Surface Downward Shortwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
-| Surface Energy Fluxes | Surface Net Longwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
-| Surface Energy Fluxes | Surface Net Radiation | CLASS-1-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015, CERES-EBAF-4-2-1 |
-| Surface Energy Fluxes | Surface Net Shortwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
-| Surface Energy Fluxes | Surface Relative Humidity | CRU4.02 |
-| Surface Energy Fluxes | Surface Upward Longwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
-| Surface Energy Fluxes | Surface Upward Shortwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
-| Vegetation Dynamics | Biomass | XuSaatchi2021, Saatchi2011, Thurner, ESACCI, NBCD2000, GEOCARBON, USForest |
-| Vegetation Dynamics | Burned Area | GFED4.1S, GFED-5-5 |
-| Vegetation Dynamics | Leaf Area Index | AVHRR, GIMMS_LAI4g, MODIS, AVH15C1 |
+<table>
+  <thead>
+    <tr>
+      <th>Category</th>
+      <th>Variable</th>
+      <th>Data Sources</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="2">Atmospheric Composition</td>
+      <td>Carbon Dioxide</td>
+      <td>NOAA.GMD, HIPPOAToM</td>
+    </tr>
+    <tr>
+      <td>Methane</td>
+      <td>FluxnetANN</td>
+    </tr>
+    <tr>
+      <td rowspan="7">Ecosystem Processes and States</td>
+      <td>Diurnal Max Temperature</td>
+      <td>CRU4.02</td>
+    </tr>
+    <tr>
+      <td>Diurnal Min Temperature</td>
+      <td>CRU4.02</td>
+    </tr>
+    <tr>
+      <td>Diurnal Temperature Range</td>
+      <td>CRU4.02</td>
+    </tr>
+    <tr>
+      <td>Ecosystem Respiration</td>
+      <td>Fluxnet-2015, FLUXCOM-1</td>
+    </tr>
+    <tr>
+      <td>Global Net Ecosystem Carbon Balance</td>
+      <td>Hoffman-1-0, GCP</td>
+    </tr>
+    <tr>
+      <td>Gross Primary Productivity</td>
+      <td>Fluxnet-2015, FLUXCOM-1, WECANN-1-0</td>
+    </tr>
+    <tr>
+      <td>Net Ecosystem Exchange</td>
+      <td>Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td rowspan="9">Land Surface Hydrology</td>
+      <td>Active Layer Thickness</td>
+      <td>CALM</td>
+    </tr>
+    <tr>
+      <td>Evapotranspiration</td>
+      <td>GLEAMv3.3a, MOD16A2, MODIS</td>
+    </tr>
+    <tr>
+      <td>Ground Heat Flux</td>
+      <td>CLASS-1-1</td>
+    </tr>
+    <tr>
+      <td>Permafrost</td>
+      <td>Obu2018, Brown2002</td>
+    </tr>
+    <tr>
+      <td>Runoff</td>
+      <td>CLASS-1-1, Dai, LORA-1-0</td>
+    </tr>
+    <tr>
+      <td>Snow Cover</td>
+      <td>CCI-CryoClim-FSC-1</td>
+    </tr>
+    <tr>
+      <td>Snow Water Equivalent</td>
+      <td>CanSISE</td>
+    </tr>
+    <tr>
+      <td>Surface Soil Moisture</td>
+      <td>WangMao</td>
+    </tr>
+    <tr>
+      <td>Terrestrial Water Storage Anomaly</td>
+      <td>GRACE</td>
+    </tr>
+    <tr>
+      <td rowspan="2">Soil Organic Matter and Nutrient Biogeochemistry</td>
+      <td>Nitrogen Fixation</td>
+      <td>Davies-Barnard</td>
+    </tr>
+    <tr>
+      <td>Soil Carbon</td>
+      <td>HWSD, NCSCDV22, wang2024_cSoil, HWSD-2-0, soilgrids2</td>
+    </tr>
+    <tr>
+      <td rowspan="13">Surface Energy Fluxes</td>
+      <td>Albedo</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP</td>
+    </tr>
+    <tr>
+      <td>Latent Heat</td>
+      <td>CLASS-1-1, WECANN-1-0, Fluxnet-2015, DOLCE, FLUXCOM-1</td>
+    </tr>
+    <tr>
+      <td>Precipitation</td>
+      <td>CLASS-1-1, CMAPv1904, GPCPv2.3, Fluxnet-2015, GPCCv2018</td>
+    </tr>
+    <tr>
+      <td>Sensible Heat</td>
+      <td>Fluxnet-2015, FLUXCOM-1, WECANN-1-0, CLASS-1-1</td>
+    </tr>
+    <tr>
+      <td>Surface Air Temperature</td>
+      <td>Fluxnet-2015, CRU4.02</td>
+    </tr>
+    <tr>
+      <td>Surface Downward Longwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td>Surface Downward Shortwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td>Surface Net Longwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td>Surface Net Radiation</td>
+      <td>CLASS-1-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015, CERES-EBAF-4-2-1</td>
+    </tr>
+    <tr>
+      <td>Surface Net Shortwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td>Surface Relative Humidity</td>
+      <td>CRU4.02</td>
+    </tr>
+    <tr>
+      <td>Surface Upward Longwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td>Surface Upward Shortwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td rowspan="3">Vegetation Dynamics</td>
+      <td>Biomass</td>
+      <td>XuSaatchi2021, Saatchi2011, Thurner, ESACCI, NBCD2000, GEOCARBON, USForest</td>
+    </tr>
+    <tr>
+      <td>Burned Area</td>
+      <td>GFED4.1S, GFED-5-5</td>
+    </tr>
+    <tr>
+      <td>Leaf Area Index</td>
+      <td>AVHRR, GIMMS_LAI4g, MODIS, AVH15C1</td>
+    </tr>
+  </tbody>
+</table>
+
 <br>
 <br>
 

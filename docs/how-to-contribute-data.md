@@ -26,7 +26,48 @@ But what if you want to benchmark using a reference dataset that we haven’t pr
 
 ## What data does ILAMB software ingest?
 
-ILAMB-ready data are stored as [NetCDFs](https://www.unidata.ucar.edu/software/netcdf/), and they adhere to community formatting conventions. Each NetCDF contains one data variable (with an optional uncertainty variable), relevant dimensions (like latitude, longitude, time, depth, etc.), global attributes (metadata), and is gridded or site-level.
+ILAMB-ready data are stored as [NetCDFs](https://www.unidata.ucar.edu/software/netcdf/), and they adhere to community formatting conventions. Each NetCDF contains one data variable (with an optional uncertainty variable), relevant dimensions (like latitude, longitude, time, depth, etc.), global attributes (metadata), and is gridded or site-level. Currently, 60% of ILAMB-ready data are global coverage, 25% are site-level, and the remaining are regional, i.e., pan-Arctic, Tropics, Northern Hemisphere, or mid-Latitudes. 80% of the gridded datasets were 0.5 degree spatial resolution, and the rest were 1 degree. The temporal resolution of the data were annual, monthly, or represented a fixed period of time. However, there are no restrictions on the spatial/temporal resolution, the variables we ingest, or the source of the data. We are always looking to expand the data we have available in ILAMB, so if you have a dataset that you think would be useful for benchmarking in ILAMB, please consider formatting it and contributing it to the software!
+
+Here is a summary of the data we already have ingested:
+
+| Category | Variable | Data Sources |
+|---|---|---|
+| Atmospheric Composition | Carbon Dioxide | NOAA.GMD, HIPPOAToM |
+| Atmospheric Composition | Methane | FluxnetANN |
+| Ecosystem Processes and States | Diurnal Max Temperature | CRU4.02 |
+| Ecosystem Processes and States | Diurnal Min Temperature | CRU4.02 |
+| Ecosystem Processes and States | Diurnal Temperature Range | CRU4.02 |
+| Ecosystem Processes and States | Ecosystem Respiration | Fluxnet-2015, FLUXCOM-1 |
+| Ecosystem Processes and States | Global Net Ecosystem Carbon Balance | Hoffman-1-0, GCP |
+| Ecosystem Processes and States | Gross Primary Productivity | Fluxnet-2015, FLUXCOM-1, WECANN-1-0 |
+| Ecosystem Processes and States | Net Ecosystem Exchange | Fluxnet-2015 |
+| Land Surface Hydrology | Active Layer Thickness | CALM |
+| Land Surface Hydrology | Evapotranspiration | GLEAMv3.3a, MOD16A2, MODIS |
+| Land Surface Hydrology | Ground Heat Flux | CLASS-1-1 |
+| Land Surface Hydrology | Permafrost | Obu2018, Brown2002 |
+| Land Surface Hydrology | Runoff | CLASS-1-1, Dai, LORA-1-0 |
+| Land Surface Hydrology | Snow Cover | CCI-CryoClim-FSC-1 |
+| Land Surface Hydrology | Snow Water Equivalent | CanSISE |
+| Land Surface Hydrology | Surface Soil Moisture | WangMao |
+| Land Surface Hydrology | Terrestrial Water Storage Anomaly | GRACE |
+| Soil Organic Matter and Nutrient Biogeochemistry | Nitrogen Fixation | Davies-Barnard |
+| Soil Organic Matter and Nutrient Biogeochemistry | Soil Carbon | HWSD, NCSCDV22, wang2024_cSoil, HWSD-2-0, soilgrids2 |
+| Surface Energy Fluxes | Albedo | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP |
+| Surface Energy Fluxes | Latent Heat | CLASS-1-1, WECANN-1-0, Fluxnet-2015, DOLCE, FLUXCOM-1 |
+| Surface Energy Fluxes | Precipitation | CLASS-1-1, CMAPv1904, GPCPv2.3, Fluxnet-2015, GPCCv2018 |
+| Surface Energy Fluxes | Sensible Heat | Fluxnet-2015, FLUXCOM-1, WECANN-1-0, CLASS-1-1 |
+| Surface Energy Fluxes | Surface Air Temperature | Fluxnet-2015, CRU4.02 |
+| Surface Energy Fluxes | Surface Downward Longwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
+| Surface Energy Fluxes | Surface Downward Shortwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
+| Surface Energy Fluxes | Surface Net Longwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
+| Surface Energy Fluxes | Surface Net Radiation | CLASS-1-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015, CERES-EBAF-4-2-1 |
+| Surface Energy Fluxes | Surface Net Shortwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
+| Surface Energy Fluxes | Surface Relative Humidity | CRU4.02 |
+| Surface Energy Fluxes | Surface Upward Longwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
+| Surface Energy Fluxes | Surface Upward Shortwave Radiation | CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015 |
+| Vegetation Dynamics | Biomass | XuSaatchi2021, Saatchi2011, Thurner, ESACCI, NBCD2000, GEOCARBON, USForest |
+| Vegetation Dynamics | Burned Area | GFED4.1S, GFED-5-5 |
+| Vegetation Dynamics | Leaf Area Index | AVHRR, GIMMS_LAI4g, MODIS, AVH15C1 |
 <br>
 <br>
 

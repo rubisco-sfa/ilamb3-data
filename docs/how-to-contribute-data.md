@@ -213,7 +213,7 @@ dimensions:
         bnds = 2 ;
 ```
 
-At the top of the header, we see 4 dimensions: time, lat, lon, and bnds (bounds). Dimensions define the shape and order of the data variables. For example, precipitation (pr) has 84 time steps, and the grid is 360 by 720 pixels large (i.e., 1 degree latitude x longitude). The time, lat, and lon values are in sequential order, 
+At the top of the header, we see 4 dimensions: time, lat, lon, and bnds (bounds). Dimensions define the shape and order of the data variables. For example, precipitation (pr) has 84 time steps, and the grid is 360 by 720 pixels large (i.e., 1 degree latitude x longitude). The time, lat, and lon values are in sequential order.
 
 Bounds (bnds) is a dimension, but it has no pre-defined values (i.e., coordinates) associated with it. You can think of coordinates as data values. The longitude dimension will have values like -179.75, -179.25, -178.75, etc., and latitude will have values like -89.75, -89.25, -88.75, etc. You can see that bnds has no coordinates by running this command:
 
@@ -286,7 +286,7 @@ If you run into any bugs, or you have an idea for a new function that would make
 
 ### 2. Fork and clone the ilamb3-data repository to your local machine
 
-Follow this tutorial if you would like to format a dataset to be ILAMB-ready. We have all the built-in tools you need to make an ILAMB-legible reference dataset that also conveniently adheres to community standards. First, you will need to create a GitHub account, and then you will need to fork our repository. To do so,visit https://github.com/rubisco-sfa/ilamb3-data and click “Fork,” or optionally install the [GitHub command line tool](https://cli.github.com/), and then run the following in your terminal:
+Follow this tutorial if you would like to format a dataset to be ILAMB-ready. We have all the built-in tools you need to make an ILAMB-legible reference dataset that also conveniently adheres to community standards. First, you will need to create a GitHub account, and then you will need to fork our repository. To do so, visit https://github.com/rubisco-sfa/ilamb3-data and click “Fork,” or optionally install the [GitHub command line tool](https://cli.github.com/), and then run the following in your terminal:
 
 ```bash
 gh auth login
@@ -294,7 +294,7 @@ cd Desktop  # navigate to a directory where you want to clone the repo
 gh repo fork rubisco-sfa/ilamb3-data --clone
 ```
 
-Now, you have a copy of the repo stored on your GitHub account. Whenever you do work on a fork, it is good practice to regularly pull down the latest commits from the repository. We update the repository often, so you’ll want to fetch repo updates every time you work on your fork:
+Now, you have a copy of the repo stored on your GitHub account. Whenever you do work on a fork, it is good practice to regularly pull down the latest commits from the repository. We update the repository often, so it's good practice to fetch repo updates every time you work on your fork:
 
 ```bash
 cd ilamb3-data  # navigate to the directory where you cloned the repo
@@ -444,7 +444,7 @@ Now that the variables are named properly, we can fix up the coordinates: time, 
 ds["time"].dtype  # determine the data type of the time coordinates
 ```
 
-You should see that the time coordiantes are `dtype('<M8[ns]')`, which means that they are in nanosecond datetime format. Xarray has a `.dt` accessor that allows you to easily manipulate datetime objects like this. So, let's turn out datetime coordinates into `cf.datetime` objects so we can use our built-in functions: 
+You should see that the time coordiantes are `dtype('<M8[ns]')`, which means that they are in nanosecond datetime format. Xarray has a `.dt` accessor that allows you to easily manipulate datetime objects like this. So, let's turn our datetime coordinates into `cf.datetime` objects so we can use our built-in functions: 
 
 ```python
 # parse the time coordinates into cf.datetime objects; Gregorian is a common calendar that many prefer to use

@@ -303,7 +303,6 @@ git remote -v
 git fetch upstream
 ```
 <br>
-<br>
 
 ### 3. Set up the ilamb3-data working environment
 
@@ -342,7 +341,6 @@ A formatting script does only 3 things:
 - Formats the data
 - Exports a NetCDF that is ready to use in ILAMB
 <br>
-<br>
 
 #### 4.1. Import libraries and functions
 
@@ -358,7 +356,6 @@ import xarray as xr  # xarray is great for working with multi-dimensional tifs/t
 
 import ilamb3_data as ild  # this is the library we built with all the formatting tools you need
 ```
-<br>
 <br>
 
 #### 4.2. Download the data
@@ -394,7 +391,6 @@ for remote_source, local_source in zip(remote_sources, local_sources):
         ild.download_from_html(remote_source, local_source)  # you can find our built-in functions at ilamb3-data/ilamb3_data
     download_stamp = ild.gen_utc_timestamp(Path(local_source).stat().st_mtime)  # save when the data were downloaded; this will go in our global attrs later
 ```
-<br>
 <br>
 
 #### 4.3. Convert variables names to CMIP6 standard names when possible
@@ -460,7 +456,6 @@ The function `set_time_attrs()` can do several things. It always ingests an xr.D
 
 > [!TIP] Sometimes, data creators set the time units to something like "months since YYYY-MM-DD." This violates CF Conventions and is not legible by xarray. When you try to read a dataset like this into xarray, it will fail. See how we handled a case like this in the WOA-23 heat content [formatting script](https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/CLASS-1-1/convert.py).
 <br>
-<br>
 
 #### 4.5. Set up the spatial coordinates and bounds
 
@@ -472,7 +467,6 @@ ds = ild.set_lon_attrs(ds)
 ds = ild.set_coord_bounds(ds, "lat")
 ds = ild.set_coord_bounds(ds, "lon")
 ```
-<br>
 <br>
 
 #### 4.6. Set up the variable attributes
@@ -537,7 +531,6 @@ After we set up the variable attributes, we drop some unnecessary attributes and
     out[uncert].encoding["_FillValue"] = np.float32(1.0e20)  # this is the standard _FillValue for float32 variables
 ```
 <br>
-<br>
 
 #### 4.7. Set up the global attributes and export an ILAMB-ready NetCDF
 
@@ -584,7 +577,6 @@ Finally, we can add global attributes (metadata) to the Dataset. Global attribut
     out_path = ild.create_output_filename(out.attrs)
     out.to_netcdf(out_path)
 ```
-<br>
 <br>
 
 ##### ODS2.6 Global Attributes Cheatsheet

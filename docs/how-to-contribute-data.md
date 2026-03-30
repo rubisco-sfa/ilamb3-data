@@ -14,25 +14,192 @@
         - [Set up spatial coordinates and bounds](#45-set-up-the-spatial-coordinates-and-bounds)
         - [Set up variable attributes](#46-set-up-the-variable-attributes)
         - [Set up global attributes and export](#47-set-up-the-global-attributes-and-export-an-ilamb-ready-netcdf)
-- [How to add formatted data to ilamb3-data](#how-to-add-formatted-data-to-ilamb3-data)
+- [How to add formatted data to ILAMB](#how-to-add-formatted-data-to-ilamb)
 
 ---
 
 ILAMB only ingests data stored in a particular file format. This means that the software may fail to run if the benchmarking data are not formatted in a way that ILAMB can understand. So, ILAMB comes pre-equipped with data that are already formatted and usable by the software. 
 
-But what if you want to benchmark using a reference dataset that we haven’t prepared, and you don’t want to spend hours trying to format it to work in ILAMB? We have created tools for you to quickly and properly format an ILAMB-ready dataset. Once a dataset is ILAMB-ready, it can be added to the ILAMB data registry for any user to access, and you will have contributed to the development of ILAMB software!
+But what if you want to benchmark using a reference dataset that we haven’t prepared, and you don’t want to spend hours trying to format it to work in ILAMB? We have created tools for you to quickly and properly format an ILAMB-ready dataset. Once a dataset is ILAMB-ready, it can be added to the ILAMB data registry for any user to access, and you will have contributed to the development of ILAMB software.
 <br>
 <br>
 
 ## What data does ILAMB software ingest?
 
-ILAMB-ready data are stored as [NetCDFs](https://www.unidata.ucar.edu/software/netcdf/), and they adhere to community formatting conventions. Each NetCDF contains one data variable (with an optional uncertainty variable), relevant dimensions (like latitude, longitude, time, depth, etc.), global attributes (metadata), and is gridded or site-level.
+ILAMB-ready data are stored as [NetCDFs](https://www.unidata.ucar.edu/software/netcdf/), and they adhere to community formatting conventions. Each NetCDF contains one data variable (with an optional uncertainty variable), relevant dimensions (like latitude, longitude, time, depth, etc.), global attributes (metadata), and is gridded or site-level. 
+
+Currently, 60% of ILAMB-ready data are global coverage, 25% are site-level, and the remaining are regional, i.e., pan-Arctic, Tropics, Northern Hemisphere, or mid-Latitudes. 80% of the gridded datasets are 0.5 degree spatial resolution, and the rest are 1 degree. The temporal resolution of the data are annual, monthly, or represent a fixed period of time. However, ILAMB has no restrictions on spatiotemporal resolution, variables, or data source. We are always looking to expand the benchmarking data we have available in ILAMB, so if you have a dataset that you think would be useful for benchmarking, please consider formatting it and contributing it to the software.
+
+Here is a summary of the data we already have ingested:
+
+<table>
+  <thead>
+    <tr>
+      <th>Category</th>
+      <th>Variable</th>
+      <th>Data Sources</th>
+    </tr>
+  </thead>
+  <tbody>
+    <tr>
+      <td rowspan="2">Atmospheric Composition</td>
+      <td>Carbon Dioxide</td>
+      <td>NOAA.GMD, HIPPOAToM</td>
+    </tr>
+    <tr>
+      <td>Methane</td>
+      <td>FluxnetANN</td>
+    </tr>
+    <tr>
+      <td rowspan="7">Ecosystem Processes and States</td>
+      <td>Diurnal Max Temperature</td>
+      <td>CRU4.02</td>
+    </tr>
+    <tr>
+      <td>Diurnal Min Temperature</td>
+      <td>CRU4.02</td>
+    </tr>
+    <tr>
+      <td>Diurnal Temperature Range</td>
+      <td>CRU4.02</td>
+    </tr>
+    <tr>
+      <td>Ecosystem Respiration</td>
+      <td>Fluxnet-2015, FLUXCOM-1</td>
+    </tr>
+    <tr>
+      <td>Global Net Ecosystem Carbon Balance</td>
+      <td>Hoffman-1-0, GCP</td>
+    </tr>
+    <tr>
+      <td>Gross Primary Productivity</td>
+      <td>Fluxnet-2015, FLUXCOM-1, WECANN-1-0</td>
+    </tr>
+    <tr>
+      <td>Net Ecosystem Exchange</td>
+      <td>Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td rowspan="9">Land Surface Hydrology</td>
+      <td>Active Layer Thickness</td>
+      <td>CALM</td>
+    </tr>
+    <tr>
+      <td>Evapotranspiration</td>
+      <td>GLEAMv3.3a, MOD16A2, MODIS</td>
+    </tr>
+    <tr>
+      <td>Ground Heat Flux</td>
+      <td>CLASS-1-1</td>
+    </tr>
+    <tr>
+      <td>Permafrost</td>
+      <td>Obu2018, Brown2002</td>
+    </tr>
+    <tr>
+      <td>Runoff</td>
+      <td>CLASS-1-1, Dai, LORA-1-0</td>
+    </tr>
+    <tr>
+      <td>Snow Cover</td>
+      <td>CCI-CryoClim-FSC-1</td>
+    </tr>
+    <tr>
+      <td>Snow Water Equivalent</td>
+      <td>CanSISE</td>
+    </tr>
+    <tr>
+      <td>Surface Soil Moisture</td>
+      <td>WangMao</td>
+    </tr>
+    <tr>
+      <td>Terrestrial Water Storage Anomaly</td>
+      <td>GRACE</td>
+    </tr>
+    <tr>
+      <td rowspan="2">Soil Organic Matter and Nutrient Biogeochemistry</td>
+      <td>Nitrogen Fixation</td>
+      <td>Davies-Barnard</td>
+    </tr>
+    <tr>
+      <td>Soil Carbon</td>
+      <td>HWSD, NCSCDV22, wang2024_cSoil, HWSD-2-0, soilgrids2</td>
+    </tr>
+    <tr>
+      <td rowspan="13">Surface Energy Fluxes</td>
+      <td>Albedo</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP</td>
+    </tr>
+    <tr>
+      <td>Latent Heat</td>
+      <td>CLASS-1-1, WECANN-1-0, Fluxnet-2015, DOLCE, FLUXCOM-1</td>
+    </tr>
+    <tr>
+      <td>Precipitation</td>
+      <td>CLASS-1-1, CMAPv1904, GPCPv2.3, Fluxnet-2015, GPCCv2018</td>
+    </tr>
+    <tr>
+      <td>Sensible Heat</td>
+      <td>Fluxnet-2015, FLUXCOM-1, WECANN-1-0, CLASS-1-1</td>
+    </tr>
+    <tr>
+      <td>Surface Air Temperature</td>
+      <td>Fluxnet-2015, CRU4.02</td>
+    </tr>
+    <tr>
+      <td>Surface Downward Longwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td>Surface Downward Shortwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td>Surface Net Longwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td>Surface Net Radiation</td>
+      <td>CLASS-1-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015, CERES-EBAF-4-2-1</td>
+    </tr>
+    <tr>
+      <td>Surface Net Shortwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td>Surface Relative Humidity</td>
+      <td>CRU4.02</td>
+    </tr>
+    <tr>
+      <td>Surface Upward Longwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td>Surface Upward Shortwave Radiation</td>
+      <td>CERES-EBAF-4-2-1, GEWEX-SRB-4-IP, WRMC.BSRN, Fluxnet-2015</td>
+    </tr>
+    <tr>
+      <td rowspan="3">Vegetation Dynamics</td>
+      <td>Biomass</td>
+      <td>XuSaatchi2021, Saatchi2011, Thurner, ESACCI, NBCD2000, GEOCARBON, USForest</td>
+    </tr>
+    <tr>
+      <td>Burned Area</td>
+      <td>GFED4.1S, GFED-5-5</td>
+    </tr>
+    <tr>
+      <td>Leaf Area Index</td>
+      <td>AVHRR, GIMMS_LAI4g, MODIS, AVH15C1</td>
+    </tr>
+  </tbody>
+</table>
+
 <br>
 <br>
 
 ## What does an ILAMB reference dataset NetCDF look like?
 
-Let’s walk through the structure of a gridded dataset that is both ILAMB-ready and adheres to community-defined formatting standards. In this example, we have a precipitation variable from the Conserving Land-Atmosphere Synthesis Suite (CLASS) version 1.1 that is ILAMB-ready. You can [download the NetCDF](https://www.ilamb.org/ilamb3-data/CLASS-1-1/obs4MIPs_UNSW_CLASS-1-1_mon_pr_gn_v20260302.nc) onto your machine and use the command `ncdump` to display the header of the file:
+Let’s walk through the structure of a gridded dataset that is both ILAMB-ready and adheres to community-defined formatting standards. In this example, we have a precipitation variable from the Conserving Land-Atmosphere Synthesis Suite (CLASS) version 1.1, which is ILAMB-ready. You can [download the ILAMB-ready NetCDF](https://www.ilamb.org/ilamb3-data/CLASS-1-1/obs4MIPs_UNSW_CLASS-1-1_mon_pr_gn_v20260302.nc) onto your machine and use the command `ncdump` to display the NetCDF header, which shows the structure of the file, including dimensions, variables, and attributes. You can run this command in your terminal, making sure to replace the file name with the name of the NetCDF you downloaded:
 
 ```ncdump -h obs4MIPs_UNSW_CLASS-1-1_mon_pr_gn_v20260302.nc```
 
@@ -46,14 +213,14 @@ dimensions:
         bnds = 2 ;
 ```
 
-At the top of the header, we see 4 dimensions: time, lat, lon, and bnds (bounds). Dimensions define the shape and order of the data variables. For example, precipitation (pr) has 84 time steps, and the grid is 360 by 720 pixels large (i.e., 1 degree latitude x longitude). The time, lat, and lon values are in sequential order, 
+At the top of the header, we see four dimensions: **time**, **lat**, **lon**, and **bnds**. Dimensions define the axes along which data is organized — they give each data variable its shape and ordering. In this dataset, there are 84 time steps, and the spatial grid is 360 × 720 cells (i.e., 0.5° latitude × 0.5° longitude resolution).
+Three of these dimensions — time, lat, and lon — have **coordinates**: labeled, sequential values that tell you where along each axis a data point falls. You can inspect these coordinate values with:
 
-Bounds (bnds) is a dimension, but it has no pre-defined values (i.e., coordinates) associated with it. You can think of coordinates as data values. The longitude dimension will have values like -179.75, -179.25, -178.75, etc., and latitude will have values like -89.75, -89.25, -88.75, etc. You can see that bnds has no coordinates by running this command:
+```bash
+ncdump -c obs4MIPs_UNSW_CLASS-1-1_mon_pr_gn_v20260302.nc
+```
 
-```ncdump -c obs4MIPs_UNSW_CLASS-1-1_mon_pr_gn_v20260302.nc```
-
-You will see something like this:
-
+which outputs something like:
 
 ```bash
 data:
@@ -62,9 +229,9 @@ data:
  time = 15.5, 45, 74.5, 105, 135.5, 166, 196.5, 227.5, 258, 288.5, 319, …
 ```
 
-See, bnds is not displayed because it has no defined coordinate values. This is because bounds (bnds) are often used for variables that are also dimensions, such as time, latitude, longitude, and depth. For example, a latitude coordinate of 35.75 has bnds of (35.5, 36). This helps us understand where the edges (bnds) of the 35.75 latitude centroid (coordinate) are located. You can see that the bnds values would be different for latitude and longitude. So, we can’t have specified coordinates for the bnds dimension; it only defines the shape, which is a tuple of two bounding values.
+Notice that **bnds** is absent from this list. That's because bnds is a dimension without coordinates. Why? Because bounds don't represent a standalone axis with their own fixed labels — they describe the edges or limits of other variables. For a coordinate variable like latitude, bounds of (35.5, 36.0) around a centroid of 35.75 tell us where that grid cell's edges are. For a data variable like precipitation (pr), bounds might represent the upper and lower limits of the value. Since the bnds dimension is reused across different variables — each with entirely different meanings and values — there's no single set of labels that would make sense for bnds on its own. It exists purely as a structural dimension, telling NetCDF that "these values come in pairs" (size 2).
 
-After you run `ncdump -h obs4MIPs_UNSW_CLASS-1-1_mon_pr_gn_v20260302.nc`, you will also see this:
+After you run `ncdump -h obs4MIPs_UNSW_CLASS-1-1_mon_pr_gn_v20260302.nc`, you will also see a list of variables:
 
 ```bash
 variables:
@@ -102,7 +269,7 @@ variables:
         double lon_bnds(lon, bnds) ;
 ```
 
-Now, we can dive into the data itself. We have a precipitation variable, pr, which has attributes like `_FillValue`, `long_name`, `standard_name`, `units`, and `ancillary_variables`. These attributes describe the variable itself, as well as any directly related variables. This formatting structure adheres to [CF Conventions](https://cfconventions.org/) that “define metadata that provide a definitive description of what the data in each variable represents, and the spatial and temporal properties of the data.” The data also adhere to [obs4MIPs Data Specifications](https://doi.org/10.5281/zenodo.11500473) (ODS) so that reference data can be published as part of the obs4MIPs project in the Earth System Grid Federation (ESGF), which archives petabytes of data related to the Coupled Model Intercomparison Projects (CMIPs).
+You can see that we have a precipitation variable, **pr**, which has attributes like `_FillValue`, `long_name`, `standard_name`, `units`, and `ancillary_variables`. These attributes describe the variable itself, as well as any directly related variables. This formatting structure adheres to [CF Conventions](https://cfconventions.org/), which “define(s) metadata that provide a definitive description of what the data in each variable represents, and the spatial and temporal properties of the data.” The NetCDF also adheres to [obs4MIPs Data Specifications](https://doi.org/10.5281/zenodo.11500473) (ODS), which is a standard based on CF Conventions that is specifically tailored to observation data used for model benchmarking. Thus, reference data can be published as part of the obs4MIPs project in the Earth System Grid Federation (ESGF), which archives petabytes of data related to the Coupled Model Intercomparison Projects (CMIPs).
 
 While adhering data to community standards is great, you can imagine that formatting your data to look like this would usually be painstaking, extremely detail-oriented, and prone to error. That’s why we have built all the tools you need to format your data quickly, without having to know all of the community conventions.
 <br>
@@ -111,7 +278,7 @@ While adhering data to community standards is great, you can imagine that format
 ## How to format an ILAMB-ready dataset
 ### 1. Create a GitHub Issue in the ilamb3-data repository
 
-First, let us know that you're working on formatting a dataset by creating a GitHub Issue in the ilamb3-data repository. This way, we can keep track of the datasets that are being worked on, and we can also help you if you have any questions along the way. To create an issue, visit https://github.com/rubisco-sfa/ilamb3-data/issues. Click on “New Issue,” and then fill out the template with the name of the dataset you are working on, a brief description of the dataset, and any relevant links or other information. This will help us understand what you are working on so we can properly assist you. You can look at current and closed Issues to see how we have been writing them.
+First, let us know that you're working on formatting a dataset by creating a GitHub Issue in the ilamb3-data repository. This way, we can keep track of the datasets that are being worked on, and we can help you if you have questions along the way. To create an issue, visit https://github.com/rubisco-sfa/ilamb3-data/issues. Click on “New Issue,” and then tell us the name/version of the dataset you are working on, a brief description of what the dataset is, what data variables you want to format, and any relevant links or other useful information. This will help us understand what you are working on, so we can properly assist you. You can look at current and closed Issues to see how we have been writing them.
 
 If you run into any bugs, or you have an idea for a new function that would make formatting easier, please also create an Issue to let us know. We are always looking for ways to improve ilamb3-data, and we appreciate any feedback you have.
 <br>
@@ -119,7 +286,7 @@ If you run into any bugs, or you have an idea for a new function that would make
 
 ### 2. Fork and clone the ilamb3-data repository to your local machine
 
-Follow this tutorial if you would like to format a dataset to be ILAMB-ready. We have all the built-in tools you need to make an ILAMB-legible reference dataset that also conveniently adheres to community standards. First, you will need to create a GitHub account, and then you will need to fork our repository. To do so,visit https://github.com/rubisco-sfa/ilamb3-data and click “Fork,” or optionally install the [GitHub command line tool](https://cli.github.com/), and then run the following in your terminal:
+Follow this tutorial if you would like to format a dataset to be ILAMB-ready. We have all the built-in tools you need to make an ILAMB-legible reference dataset that also conveniently adheres to community standards. First, you will need to create a GitHub account, and then you will need to fork our repository. To do so, visit https://github.com/rubisco-sfa/ilamb3-data and click “Fork,” or optionally install the [GitHub command line tool](https://cli.github.com/), and then run the following in your preferred command line interface (e.g., Terminal, Command Prompt, etc.):
 
 ```bash
 gh auth login
@@ -127,7 +294,7 @@ cd Desktop  # navigate to a directory where you want to clone the repo
 gh repo fork rubisco-sfa/ilamb3-data --clone
 ```
 
-Now, you have a copy of the repo stored on your GitHub account. Whenever you do work on a fork, it is good practice to regularly pull down the latest commits from the repository. We update the repository often, so you’ll want to fetch repo updates every time you work on your fork:
+Now, you have a copy of the repo stored on your GitHub account. Whenever you do work on a fork, it is good practice to regularly pull down the latest commits from the repository. We update the repository often, so it's good practice to fetch repo updates every time you work on your fork:
 
 ```bash
 cd ilamb3-data  # navigate to the directory where you cloned the repo
@@ -136,25 +303,23 @@ git remote -v
 git fetch upstream
 ```
 <br>
-<br>
 
 ### 3. Set up the ilamb3-data working environment
 
-Now that you have forked and created a clone of the ilamb3-data, you should set up your Python working environment. To manage working environments, we recommend using Astral’s library called `uv`. You can follow [these instructions](https://docs.astral.sh/uv/getting-started/installation/) to install it on your machine. It is open-source and lightning fast, but unlike [Anaconda](https://www.anaconda.com/download), it can only manage Python environments and cannot configure non-Python libraries. You can use any environment manager you prefer. Here is how you can quickly set up your working environment with `uv`:
+Now that you have forked and created a clone of the ilamb3-data repository, you should set up your Python working environment. To manage working environments, we recommend using Astral’s library called `uv`. You can follow [these instructions](https://docs.astral.sh/uv/getting-started/installation/) to install it on your machine. It is open-source and lightning fast, but unlike [Anaconda](https://www.anaconda.com/download), it can only manage Python environments and cannot configure non-Python libraries. You can use any environment manager you prefer. Here is how you can quickly set up your working environment with `uv`:
 
 ```bash
 cd ilamb3-data  # navigate to the directory where you cloned the repo
 uv sync
 ```
 
-That’s it! Now you have a Python version and other libraries that work with our built-in functions. To run a Python script or Jupyter notebook, you need to activate the environment. Navigate to the outer ilamb3-data directory where the `pyproject.toml`/`uv.lock` file is located:
+That’s it! Now you have a Python version and other libraries that work with our built-in functions. To run a Python script or Jupyter notebook, you need to activate the environment. Navigate to the outer ilamb3-data directory where the `pyproject.toml`/`uv.lock` file is located, and then run:
 
 ```bash
-cd ilamb3-data
 source .venv/bin/activate
 ```
 
-Now you can use our Python functions to format your data. To deactivate the environment, just type `deactivate` in your terminal. Next, you will need to create a new data directory. This is where you will store the raw (pre-formatted) data, your formatting python script, and any other files you need while you work. For example, some people like to code in blocks using Jupyter. You’ll just need to temporarily install Jupyter into the environment using `uv pip install jupyterlab`. Here is where you should create your new working directory:
+Now, you can use our Python functions to format your data. To deactivate the environment, just type `deactivate` in your terminal. Next, you will need to create a new data directory. This is where you will store the raw (pre-formatted) data, your formatting python script, and any other files you need while you work. For example, some people like to code in blocks using Jupyter. You’ll just need to temporarily install Jupyter into the environment using `uv pip install jupyterlab`. Here is where you should create your new working directory:
 
 ```bash
 cd ilamb3-data/data
@@ -162,7 +327,7 @@ mkdir EXAMPLE-1-0  # we prefer to name these folders after the source and versio
 touch convert.py  # this creates the Python formatting script; you can call it whatever you want, e.g., format.py, process.py, etc.
 ```
 
-Now that you’ve created the Python script, you can use your favorite code editor to write in it (e.g., VSCode, JupyterLab, etc.). You might also create a `convert.ipynb` if you prefer to draft code in blocks before transferring it to the final convert.py.
+Now that you’ve created the Python script, you can use your favorite code editor to write in it (e.g., VSCode, JupyterLab, etc.). You might also create a `convert.ipynb` if you prefer to draft code in blocks, but be sure to copy/paste the script into `convert.py` when you're done.
 <br>
 <br>
 
@@ -175,7 +340,6 @@ A formatting script does only 3 things:
 - Downloads the data (or provides instructions on how to access it)
 - Formats the data
 - Exports a NetCDF that is ready to use in ILAMB
-<br>
 <br>
 
 #### 4.1. Import libraries and functions
@@ -193,11 +357,10 @@ import xarray as xr  # xarray is great for working with multi-dimensional tifs/t
 import ilamb3_data as ild  # this is the library we built with all the formatting tools you need
 ```
 <br>
-<br>
 
 #### 4.2. Download the data
 
-Then, we download the data. First, we create a directory called `_raw`, which is where we will store the raw (pre-formatted) data. We like to use the `Path` library because it is platform independent, simpler, and more robust than `os` or `shutil`. If the directory already exists, that's fine. If it doesn't yet exist, it will be created.
+Then, we download the data. First, we create a directory called `_raw`, which is where we will store the raw (pre-formatted) data. We like to use the `Path` library because it is platform-independent, simpler, and more robust than `os` or `shutil`. If the directory already exists, that's fine. If it doesn't yet exist, it will be created.
 
 ```python
 RAW_PATH = Path("_raw")
@@ -205,7 +368,9 @@ if not RAW_PATH.is_dir():
     RAW_PATH.mkdir()
 ```
 
-This particular dataset is stored on a thredds server, which you can access directly using htmls. We have a built-in function called `download_from_html()` that is handy here. You just need to provide the URL and a path to the file you want to save the data to. The function will check if the file already exists, and if it doesn't, it will download the data and save it to the specified path. We have other built-in downloading functions, such as `download_from_zenodo()`. We have also installed [earthaccess](https://earthaccess.readthedocs.io/en/latest/) into the Python environment, so you can easily search and download data from NASA Earthdata servers. All of our built-in functions are stored in `ilamb3_data/ilamb3_data/`, so you can check there to see if we have a function that works for your data source. If not, you can write your own function and add it to the library for others to use!
+This particular dataset is stored on a thredds server, which you can access directly using htmls. We have a built-in function called `download_from_html()` that is handy here. You just need to provide the URL and a path to the file you want to save the data to. The function will check if the file already exists, and if it doesn't, it will download the data and save it to the specified path. We have other built-in downloading functions, such as `download_from_zenodo()`. You can see how that function was used to in the [GFED-5-0 formatting script](https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/GFED-5-0/convert.py). We have also installed [earthaccess](https://earthaccess.readthedocs.io/en/latest/) into the Python environment, so you can easily search and download data from NASA Earthdata servers. We used `earthaccess` in the [CERES-EBAF-4-2-1 formatting script](https://github.com/rubisco-sfa/ilamb3-data/blob/9368ba36d344ecd6e6867ba11e1e045e8529f01d/data/CERES-EBAF-4-2-1/convert.py). 
+
+All of our built-in functions are stored in `ilamb3-data/ilamb3_data/`, so you can check there to see if we have a function that you need. If not, you can write your own function and add it to the library for others to use!
 
 ```python
 # define sources
@@ -227,30 +392,29 @@ for remote_source, local_source in zip(remote_sources, local_sources):
     download_stamp = ild.gen_utc_timestamp(Path(local_source).stat().st_mtime)  # save when the data were downloaded; this will go in our global attrs later
 ```
 <br>
-<br>
 
 #### 4.3. Convert variables names to CMIP6 standard names when possible
 
-Now that we have the data, we can format it. This is where you will use the built-in functions in `ilamb3_data` to quickly and easily format your data. You can also write your own functions if you need to do something that our built-in functions don't cover. The goal here is to get your data into a format that looks like the example NetCDF we showed earlier. You can use the `xarray` library to work with your data as you format it. We have found that it is the best library for working with multi-dimensional data, and it has a lot of built-in functions that make formatting easier.
+Now that we have the data, we can format it. The goal here is to get your data into a format that looks like the example NetCDF we showed earlier. You can use the `xarray` library to work with your data as you format it. We have found that it is the best library for working with multi-dimensional data, and it has a lot of built-in functions that make formatting easier.
 
-First, we open the raw data files as an xarray object. There are several kinds of data objects to choose from in xarray. We are most often working with xarray Datasets and DataArrays. Read more about them [here](https://docs.xarray.dev/en/latest/user-guide/data-structures.html). Here, we load the data files as an xarray Dataset, which is a collection of DataArrays. Each DataArray has its own name, dimensions, coordinates, and attributes. The Dataset itself also has its own attributes.
+First, we open the raw data files we downloaded as an xarray object. There are several kinds of xarray data objects to choose from. We are most often working with xarray Datasets and DataArrays. Read more about them [here](https://docs.xarray.dev/en/latest/user-guide/data-structures.html). In this case, we load the data files into one xarray Dataset, which is a collection of DataArrays. Each DataArray has its own name, dimensions, coordinates, and attributes. The Dataset itself also has its own global attributes.
 
 ```python
 ds = xr.open_mfdataset(local_sources)
-ds  # If you're working in a Jupyter notebook, you can run this line to see the structure of the Dataset and the variables it contains
+print(ds)
 ```
 
 The first step is to understand the structure of the raw data files. This is an important step because it helps you understand what you are working with before you start formatting. Once you understand the structure of the raw data files, you can start using xarray functions to manipulate the data and get it into the format that ILAMB expects. For example, you might need to rename some variables, change the dimensions, add attributes, etc. 
 
 After inspecting the raw files, we can see that, first, we need to rename some variables to match CMIP6 standard names. Not all data variables are in the [CMIP6 Variable Controlled Vocabulary Table](https://airtable.com/appYNLuWqAgzLbhSq/shrgcENhJZU1y3ye0/tbleXPCaJeYeIzAhR) (CV) or the [MIP CV Table](https://clipc-services.ceda.ac.uk/dreq/mipVars.html), but if they are, it is best practice to use them. CVs change over time, so you should use the most recent version when deciding how to name your variables. If you are unsure about how to name your variables, you can check the CVs, or you can ask us in the Issue you created on the ilamb3-data repository. 
 
-In this case, we can see that the raw data files have variables called `hfds` and `rs`. We know that these variables represent surface downwelling heat flux (hfds) and surface downwelling shortwave radiation (rs). So, we can search these descriptions on the [CMIP6 Variable CV Table](https://airtable.com/appYNLuWqAgzLbhSq/shrgcENhJZU1y3ye0/tbleXPCaJeYeIzAhR), which shows us that the standard name for `hfds` is actually `hfdsl` and the standard name for `rs` is actually `rss`. So, we can use the `rename()` function in xarray to rename these variables to match the CMIP6 standard names. This is important because it helps ensure that our data are consistent with other datasets and that they can be easily compared and used in ILAMB.
+In this case, we can see that the raw data files have variables called `hfds` and `rs`. We know that these variables represent surface downwelling heat flux (hfds) and surface downwelling shortwave radiation (rs). So, we can search these descriptions on the [CMIP6 Variable CV Table](https://airtable.com/appYNLuWqAgzLbhSq/shrgcENhJZU1y3ye0/tbleXPCaJeYeIzAhR), which shows us that the standard name for `hfds` is actually `hfdsl` and the standard name for `rs` is actually `rss`. So, we can use the `rename()` function in xarray to rename these variables to match the CMIP6 standard names. This is important because it helps ensure that our data are consistent with other datasets and can be easily compared and used in ILAMB.
 
 ```python
 ds = ds.rename({"hfds": "hfdsl", "hfds_sd": "hfdsl_sd", "rs": "rss", "rs_sd": "rss_sd"})  # rename variables/uncertainty to match CMIP6 standard names
 ```
 
-We noticed that the variables also come with standard deviation as uncertainty (_sd). To properly name an uncertainty variable, we refer to the [obs4MIPs ODS 2.6](https://zenodo.org/records/17789550) Appendix 5, which defines 7 uncertainty suffixes to append to a standard variable name:
+We can see that the variables also come with standard deviation as uncertainty (_sd). To properly name an uncertainty variable, we refer to the [obs4MIPs ODS 2.6](https://zenodo.org/records/17789550) Appendix 5, which defines 7 uncertainty suffixes to append to a standard variable name:
 
 - nobs: the number of discrete observations or measurements from which a data value has been derived
 - ustd: the per-datum standard uncertainty is a combination of independent, structured and common effects and is equal to the positive square root of the sum of the components. The standard uncertainty is provided at one standard deviation. Replacement for ‘standard error’ due to updated terminology
@@ -271,13 +435,13 @@ If you find that your uncertainty data does not fit into any of these categories
 
 #### 4.4. Set up the temporal coordinates and bounds
 
-Now that the variables are named properly, we can fix up the coordinates: time, latitude, and longitude, as well as the bnds dimension. You should always inspect the time coordinates before manipulating them. Commonly, the time coordinates are relative to a reference date, e.g., in "days since YYY-MM-DD". If that's the case, you can parse the "days since YYY-MM-DD" integers into `cf.datetime` objects using the `cftime` library we imported earlier. 
+Now that the variables are named properly, we can fix up the coordinates: time, latitude, and longitude, as well as the bnds dimension. You should always inspect the time coordinates before manipulating them. Commonly, the time coordinates are relative to a reference date, e.g., in "days since YYYY-MM-DD". If that's the case, you can parse the "days since YYYY-MM-DD" integers into `cf.datetime` objects using the `cftime` library we imported earlier. 
 
 ```python
 ds["time"].dtype  # determine the data type of the time coordinates
 ```
 
-You should see that the time coordiantes are `dtype('<M8[ns]')`, which means that they are in nanosecond datetime format. Xarray has a `.dt` accessor that allows you to easily manipulate datetime objects like this. So, let's turn out datetime coordinates into `cf.datetime` objects so we can use our built-in functions: 
+You should see that the time coordinates are `dtype('<M8[ns]')`, which means that they are in nanosecond datetime format. Xarray has a `.dt` accessor that allows you to easily manipulate datetime objects like this. So, let's turn our datetime coordinates into `cf.datetime` objects so we can use our built-in functions: 
 
 ```python
 # parse the time coordinates into cf.datetime objects; Gregorian is a common calendar that many prefer to use
@@ -288,10 +452,9 @@ ds = ild.set_time_attrs(
 )
 ```
 
-The function `set_time_attrs()` can do several things. It always ingests an xr.Dataset, and you must specify the `bounds_frequency` (e.g., "M" for monthly, "D" for daily, etc.). Optionally, you can provide a cf.datetime `ref_date` to set as the time units in "days since ref_date", set `create_new_time=True` if you want to build the time dimension from scratch given a cf.datetime `sdate` and `edate`, or we can even create a climatological calendar by setting `climatology=True` and defining the cf.datetime `clim_sdate` and `clim_edate`. This function will automatically generate the necessary time attributes and encoding, such as `axis`, `long_name`, `standard_name`, `units`, `calendar`, and `bounds`.
+The function `set_time_attrs()` can do several things. It always ingests an xr.Dataset, and you must specify the `bounds_frequency` (e.g., "M" for monthly, "D" for daily, etc.). Optionally, we can provide a cf.datetime `ref_date` to set as the time units as "days since ref_date"; we can set `create_new_time=True` if you want to build the time dimension completely from scratch given a cf.datetime `sdate` and `edate`; or we can even create a climatological calendar by setting `climatology=True` and defining the cf.datetime `clim_sdate` and `clim_edate`. This function will automatically generate the necessary time attributes and encoding, such as `axis`, `long_name`, `standard_name`, `units`, `calendar`, and `bounds`.
 
-> [!TIP] Sometimes, data creators set the time units to something like "months since YYY-MM-DD." This violates CF Conventions and is not legible by xarray. When you try to read a dataset like this into xarray, it will fail. See how we handled a case like this in the WOA-23 heat content [formatting script](https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/CLASS-1-1/convert.py).
-<br>
+> [!TIP] Sometimes, data creators set the time units to something like "months since YYYY-MM-DD." This violates CF Conventions and is not legible by xarray. When you try to read a dataset like this into xarray, it will fail. See how we handled a case like this in the WOA-23 heat content [formatting script](https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/CLASS-1-1/convert.py).
 <br>
 
 #### 4.5. Set up the spatial coordinates and bounds
@@ -304,7 +467,6 @@ ds = ild.set_lon_attrs(ds)
 ds = ild.set_coord_bounds(ds, "lat")
 ds = ild.set_coord_bounds(ds, "lon")
 ```
-<br>
 <br>
 
 #### 4.6. Set up the variable attributes
@@ -353,9 +515,9 @@ for var in variables:
 
 We have a handy function called `get_cmip6_variable_info()` that uses a library called `intake-esgf` to see if the variable is in the CMIP6 CV. If it is, the function will return the standard name, long name, and units for that variable. If it is not, the function will throw an error, and you can catch that error to assign your own variable info. This is a great way to ensure that your variable names are consistent with the CMIP6 CV when possible, but also gives you the flexibility to define your own variable info when necessary.
 
-Then, you can input that information into `set_var_attrs()`, so you can correctly set the variable attributes. This function also allows you to set the data type and convert data values to different units. In this case, we do not convert the data values to CMIP6 standard units. Sometimes, converting variables between units results in data loss due to precision issues, so you should be mindful when converting data values. You can also use this function to set ancillary variables like uncertainty, and you can also add `cell_methods` information if your variable was integrated over a particular dimension and how. E.g., if your variable is a monthly average, you can set `cell_methods="time: mean"`.
+Then, you can input that information into `set_var_attrs()`, so you can correctly set the variable attributes. This function also allows you to set the data type and convert data values to different units. In this case, we do not convert the data values to CMIP6 standard units. Sometimes, converting variables between units results in data loss due to precision issues, so you should be mindful when converting data values. You can also use this function to set ancillary variables like uncertainty, and you can also add `cell_methods` information if your variable was integrated over a particular dimension and how. E.g., if your variable is a monthly average of daily observations, you can set `cell_methods="time: mean"`.
 
-After we set up the variable attributes, we drop some straggling unnecessary information and then set the uncertainty variable's attributes. Refer to the ODS 2.6 Appendix 5 for how to name and format uncertainty variables. In this case, we have standard deviation on the mean, so we use the legacy suffix of `_sd`, and we set the standard name to be the main variable's standard name with "standard_deviation" appended to it.
+After we set up the variable attributes, we drop some unnecessary attributes and then set the uncertainty variable's attributes. Refer to the ODS 2.6 Appendix 5 for how to name and format uncertainty variables. In this case, we have standard deviation on the mean, so we use the legacy suffix of `_sd`, and we set the standard name to be the main variable's standard name with "standard_deviation" appended to it.
 
 ```python
     # drop some straggling attrs
@@ -369,11 +531,10 @@ After we set up the variable attributes, we drop some straggling unnecessary inf
     out[uncert].encoding["_FillValue"] = np.float32(1.0e20)  # this is the standard _FillValue for float32 variables
 ```
 <br>
-<br>
 
 #### 4.7. Set up the global attributes and export an ILAMB-ready NetCDF
 
-Finally, we can add global attributes (metadata) to the Dataset. Global attributes are important because they provide context and information about the dataset as a whole. They can include things like the title of the dataset, the source of the data, the history of how the data were processed, etc. We have a built-in function called `set_ods26_global_attrs()` that sets the global attributes to adhere to obs4MIPs Data Specifications (ODS) 2.6. The function will display warnings when required attributes are missing or incorrect. We begin by looping through each variable so that we end up with one variable per NetCDF, which is the format that ILAMB can interpret. An uncertainty variable is allowed, but any other variables that are not the main variable or its uncertainty should be removed from the Dataset before exporting.
+Finally, we can add global attributes (metadata) to the Dataset. Global attributes are important because they provide context and information about the dataset as a whole. They can include things like the title of the dataset, the source of the data, the history of how the data were processed, etc. We have a built-in function called `set_ods26_global_attrs()` that sets the global attributes to adhere to obs4MIPs Data Specifications (ODS) 2.6. The function will display warnings when required attributes are missing or incorrect. We begin by looping through each variable so that we end up with one variable per NetCDF, which is the format that ILAMB can interpret. An uncertainty variable is allowed, but any other variables that are not the main variable or its uncertainty should be removed from the Dataset before exporting. Note that ODS 2.6. does not allow uncertainty variables to be stored in the same file as the variable. But this is fine for ILAMB. Just note that the uncertainty variables will need to be extracted into a separate NetCDF if you want to submit as part of Obs4MIPs in the ESGF archive.
 
 ```python
     out = ild.set_ods26_global_attrs(
@@ -416,7 +577,6 @@ Finally, we can add global attributes (metadata) to the Dataset. Global attribut
     out_path = ild.create_output_filename(out.attrs)
     out.to_netcdf(out_path)
 ```
-<br>
 <br>
 
 ##### ODS2.6 Global Attributes Cheatsheet
@@ -466,7 +626,7 @@ After the global attributes are set, we create an output filename using the `cre
 <br>
 <br>
 
-## How to add formatted data to ilamb3-data
+## How to add formatted data to ILAMB
 
 Once you have produced your NetCDF, you can check the formatting using `ncdump` or display the dataset in xarray. You should also plot your data and visually inspect it to make sure it looks correct; we recommend doing this with xarray `.plot()` or using `ncview` in the command line. If everything looks good, you can push your changes to your fork and then create a pull request to merge your changes into the main ilamb3-data repository. At this point, we will review your formatting script and the resultant NetCDF. We will request changes if they need to be made, but if everything looks good, we can merge it into the main repository so that others can use it as a reference dataset in ILAMB.
 

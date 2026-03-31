@@ -573,10 +573,14 @@ def set_time_attrs(
     return ds
 
 
-def set_lat_attrs(ds: xr.Dataset) -> xr.Dataset:
+def set_lat_attrs(ds: xr.Dataset, compression: dict | None = None) -> xr.Dataset:
     """
     Ensure the xarray dataset's latitude attributes are formatted according to CF-Conventions.
     """
+    # If lat is a dimension but not a variable, create it from the dim coordinates
+    if "lat" in ds.dims and "lat" not in ds:
+        ds = ds.assign_coords(lat=ds["lat"])
+
     assert "lat" in ds
     da = ds["lat"]
 
@@ -594,14 +598,20 @@ def set_lat_attrs(ds: xr.Dataset) -> xr.Dataset:
 
     da.encoding.clear()
     da.encoding = {"_FillValue": None, "dtype": "float64"}
+    if compression is not None:
+        da.encoding.update(compression)
     ds["lat"] = da
     return ds
 
 
-def set_lon_attrs(ds: xr.Dataset) -> xr.Dataset:
+def set_lon_attrs(ds: xr.Dataset, compression: dict | None = None) -> xr.Dataset:
     """
     Ensure the xarray dataset's longitude attributes are formatted according to CF-Conventions.
     """
+    # If lon is a dimension but not a variable, create it from the dim coordinates
+    if "lon" in ds.dims and "lon" not in ds:
+        ds = ds.assign_coords(lon=ds["lon"])
+
     assert "lon" in ds
     da = ds["lon"]
 
@@ -619,6 +629,8 @@ def set_lon_attrs(ds: xr.Dataset) -> xr.Dataset:
 
     da.encoding.clear()
     da.encoding = {"_FillValue": None, "dtype": "float64"}
+    if compression is not None:
+        da.encoding.update(compression)
     ds["lon"] = da
     return ds
 
@@ -708,18 +720,14 @@ def convert_units(
     new_attrs["units"] = target_units
 
     return xr.DataArray(
-        data=new_vals,
-        coords=da.coords,
-        dims=da.dims,
-        name=da.name,
-        attrs=new_attrs,
-        # encoding=da.encoding,  # preserve encoding (you may want to clear dtype and calendar)
+        data=new_vals, coords=da.coords, dims=da.dims, name=da.name, attrs=new_attrs
     )
 
 
 # default CF _FillValue options (see https://docs.unidata.ucar.edu/netcdf-c/current/file_format_specifications.html#classic_format_spec)
 _FILL_VALUES = {
-    np.dtype("S1"): np.bytes_(b"\x00"),  # char
+    np.dtype("S1"): np.bytes_(b"\x00"),  # char (fixed-length)
+    np.dtype("U"): "",  # string (variable-length)
     np.int8: np.int8(-127),  # byte
     np.int16: np.int16(-32767),  # short
     np.int32: np.int32(2147483647),  # int
@@ -741,27 +749,150 @@ def _sanitize_units(u: str) -> str:
     return u.replace("^", "")
 
 
+def _validate_standard_name(name: str) -> None:
+    if " " in name:
+        raise ValueError(f"standard_name '{name}' contains spaces; use underscores.")
+    if name != name.lower():
+        raise ValueError(f"standard_name '{name}' must be lowercase.")
+
+
+def _validate_ancillary_variables(ds: xr.Dataset, ancillary_variables: str) -> None:
+    missing = [v for v in ancillary_variables.split() if v not in ds]
+    if missing:
+        warnings.warn(
+            f"Ancillary variables not found in dataset: {missing}. "
+            f"Make sure to add them before writing."
+        )
+
+
+_VALID_CELL_METHODS = {
+    "point",
+    "sum",
+    "mean",
+    "maximum",
+    "minimum",
+    "mid_range",
+    "standard_deviation",
+    "variance",
+    "mode",
+    "median",
+}
+
+
+def _validate_cell_methods(ds: xr.Dataset, cell_methods: str) -> None:
+    # pattern: "dim1: method1 dim2: method2 ..."
+    pairs = re.findall(r"(\S+):\s+(\S+)", cell_methods)
+    if not pairs:
+        raise ValueError(
+            f"cell_methods '{cell_methods}' doesn't match expected 'dim: method' "
+            "format."
+        )
+    for dim, method in pairs:
+        if dim not in ds.dims and dim not in ("area", "time", "where"):
+            warnings.warn(
+                f"cell_methods references '{dim}' which is not a dimension in the "
+                "dataset."
+            )
+        if method not in _VALID_CELL_METHODS:
+            raise ValueError(
+                f"cell_methods method '{method}' is not CF-valid. "
+                f"Must be one of: {_VALID_CELL_METHODS}"
+            )
+
+
+def _validate_flags(
+    flag_values: np.ndarray,
+    flag_meanings: list[str],
+    dtype: np.dtype,
+) -> None:
+    if len(flag_values) != len(flag_meanings):
+        raise ValueError(
+            f"flag_values ({len(flag_values)}) and flag_meanings ({len(flag_meanings)}) "
+            f"must have the same length."
+        )
+    if len(flag_values) != len(set(flag_values)):
+        raise ValueError("flag_values must be unique.")
+    for meaning in flag_meanings:
+        if " " in meaning:
+            raise ValueError(
+                f"flag_meanings entry '{meaning}' contains spaces; use underscores."
+            )
+    if not np.can_cast(flag_values, dtype, casting="same_kind"):
+        warnings.warn(
+            f"flag_values dtype ({flag_values.dtype}) doesn't match "
+            f"variable dtype ({dtype}). Values will be cast."
+        )
+
+
 def set_var_attrs(
     ds: xr.Dataset,
     var: str,
-    cmip6_units: str,
-    cmip6_standard_name: str,
-    cmip6_long_name: str,
+    *,
+    units: str,
+    standard_name: str,
+    long_name: str,
     ancillary_variables: str | None = None,
     cell_methods: str | None = None,
-    *,
+    flag_values: np.ndarray | None = None,
+    flag_meanings: list[str] | None = None,
+    extra_attrs: dict | None = None,
     target_dtype: str | np.dtype | None = None,
     convert: bool = False,
+    compression: dict | None = None,
+    overwrite: bool = False,
 ) -> xr.Dataset:
     """
-    Ensure ds[var] has CF-compliant attrs and correct _FillValue:
-      - Optionally convert units
-      - Strip any “[unit]” from the long_name
-      - Set units, standard_name, long_name
-      - Optionally cast to target_dtype
-      - Pick and set the default _FillValue based on final dtype
-      - For ints/bytes/shorts: replace existing missing_value markers
-        with the CF fill and then write _FillValue into encoding
+    Set CF-compliant attributes for a variable in the dataset, with optional unit
+    conversion and dtype handling. The user can add extra attributes via `extra_attrs`
+    that may or may not be CF compliant.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        The input dataset containing the variable to update.
+    var : str
+        The name of the variable in the dataset to update.
+    units : str
+        The desired CF-compliant units for the variable (e.g., "kg m-2 s-1").
+    standard_name : str
+        The CF standard_name for the variable (e.g., "surface_air_pressure"). Ideally,
+        users should choose a CMIP6 or MIP standard_name if possible.
+    long_name : str
+        A descriptive long name for the variable. The long_name should be
+        CMIP6/MIP-compliant if possible.
+    ancillary_variables : str, optional
+        A space-separated string of ancillary variable names, if applicable.
+        Ancillary variables are usually used to reference an uncertainty variable.
+    cell_methods : str, optional
+        A string describing the cell methods applied to the variable, if applicable.
+        E.g., if the data are observations aggregated over time -> "time: mean".
+    flag_values : np.ndarray, optional
+        An array of flag values for categorical data. Must be provided alongside
+        `flag_meanings`.
+    flag_meanings : list[str], optional
+        A list of human-readable meanings corresponding to each flag value. Must be
+        provided alongside `flag_values`.
+    extra_attrs : dict, optional
+        Any additional attributes to add to the variable that may not be CF compliant.
+    target_dtype : str or np.dtype, optional
+        The desired final dtype for the variable (e.g., "float32", "int16").
+        If not provided, keeps existing dtype.
+    convert : bool, default False
+        Whether to convert the variable to the target unit.
+        If False and the variable has existing units that differ from the target,
+        a warning is issued and units are left unchanged.
+    compression : dict, optional
+        A dictionary of compression settings to add to the variable's encoding
+        (e.g., {"zlib": True, "complevel": 4}).
+    overwrite : bool, default False
+        Whether to overwrite all existing attributes and encoding. If False, existing
+        attributes are preserved and updated with any new ones provided here. If True,
+        all existing attributes and encoding are cleared before setting the new ones.
+
+    Returns
+    -------
+    xr.Dataset
+        The updated dataset with CF-compliant attributes set for the specified variable.
     """
     if var not in ds:
         raise KeyError(f"Variable '{var}' not found in dataset.")
@@ -770,8 +901,12 @@ def set_var_attrs(
     # capture existing missing_value marker
     mv = da.encoding.get("missing_value", da.attrs.get("missing_value", None))
 
+    # optionally overwrite all existing attrs
+    if overwrite:
+        da.attrs = {}
+        da.encoding = {}
+
     # optional unit conversion
-    # ——————— normalize any “unit”/“units” attr ———————
     # look for a key that lowercased is “unit” or “units”
     units_key = next((k for k in da.attrs if k.lower() in ("unit", "units")), None)
     if units_key:
@@ -785,37 +920,49 @@ def set_var_attrs(
             da.attrs["units"] = sanitized_unit
 
     current_units = da.attrs.get("units", None)
-    effective_units = cmip6_units
+    effective_units = units
 
     # only convert if there *was* an original units and it differs
-    if current_units is not None and current_units != cmip6_units:
+    if current_units is not None and current_units != units:
         if convert:
-            warnings.warn(
-                f"Converting {var} units from {current_units} to {cmip6_units}"
-            )
-            da = convert_units(da, cmip6_units)
+            warnings.warn(f"Converting {var} units from {current_units} to {units}")
+            da = convert_units(da, units)
         else:
             warnings.warn(
                 f"Variable '{var}' has units '{current_units}', "
-                f"requested '{cmip6_units}'. Keeping existing units."
+                f"requested '{units}'. Keeping existing units."
             )
             effective_units = current_units
 
-    # remove "[unit]" from long name; could be confusing if it doesn't match actual unit
-    clean_long_name = re.sub(r"\s*\[[^\]]+\]", "", cmip6_long_name).strip()
+    # do some cleaning/validation
+    _validate_standard_name(standard_name)
+    clean_long_name = re.sub(r"\s*\[[^\]]+\]", "", long_name).strip()
+    if not clean_long_name:
+        raise ValueError("long_name cannot be empty.")
+    if ancillary_variables is not None:
+        _validate_ancillary_variables(ds, ancillary_variables)
+    if cell_methods is not None:
+        _validate_cell_methods(ds, cell_methods)
 
     # create CF attrs
     attrs = {
         "units": effective_units,
-        "standard_name": cmip6_standard_name,
+        "standard_name": standard_name,
         "long_name": clean_long_name,
     }
 
-    # assign ancillary variables attr if needed
+    # assign other variables attr if needed
     if ancillary_variables is not None:
         attrs["ancillary_variables"] = ancillary_variables
     if cell_methods is not None:
         attrs["cell_methods"] = cell_methods
+    if flag_values is not None and flag_meanings is not None:
+        final_dt = np.dtype(target_dtype) if target_dtype is not None else da.dtype
+        _validate_flags(flag_values, flag_meanings, final_dt)
+        attrs["flag_values"] = np.asarray(flag_values, dtype=final_dt)
+        attrs["flag_meanings"] = " ".join(flag_meanings)
+    if extra_attrs is not None:
+        attrs.update(extra_attrs)
 
     # assign the attrs
     da = da.assign_attrs(attrs)
@@ -825,7 +972,6 @@ def set_var_attrs(
     da = da.astype(final_dt)
 
     # determine final dtype and CF _FillValue
-    final_dt = np.dtype(target_dtype) if target_dtype is not None else da.dtype
     fill = _FILL_VALUES.get(final_dt, None)
     if fill is None:
         # fallback by kind and size
@@ -854,6 +1000,10 @@ def set_var_attrs(
     # remove any old missing_value attributes; not required by CF anymore
     da.attrs.pop("missing_value", None)
     da.encoding.pop("missing_value", None)
+
+    # set compression encoding
+    if compression is not None:
+        da.encoding.update(compression)
 
     # reassign back to dataset
     ds[var] = da

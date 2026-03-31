@@ -5,7 +5,10 @@ import re
 import urllib.request
 import uuid
 import warnings
+import zipfile
+from pathlib import Path
 from typing import Optional
+from urllib.parse import urlparse
 
 import cftime as cf
 import numpy as np
@@ -34,15 +37,35 @@ def create_registry(registry_file: str) -> pooch.Pooch:
     return registry
 
 
-def download_from_html(remote_source: str, local_source: str | None = None) -> str:
+def download_from_html(
+    remote_source: str, local_source: Path | str | None = None
+) -> Path:
     """
     Download a file from a remote URL to a local path.
     If the "content-length" header is missing, it falls back to a simple download.
+    If the downloaded file is a .zip, it is extracted into a directory of the same name
+    and the extraction directory is returned.
+    Spaces in the filename are replaced with underscores.
     """
     CHUNKSIZE = 2**20  # 1 [Mb]
-    if local_source is None:
-        local_source = os.path.basename(remote_source)
-    if os.path.isfile(local_source):
+    if not isinstance(remote_source, str):
+        raise TypeError(
+            f"remote_source must be a str, not {type(remote_source).__name__}"
+        )
+    if not local_source:
+        filename = Path(urlparse(remote_source).path).name
+        local_source = Path(filename.replace(" ", "_"))
+    else:
+        local_source = Path(local_source)
+        local_source = local_source.with_name(local_source.name.replace(" ", "_"))
+
+    extract_dir = local_source.with_suffix("")
+    if local_source.is_file():
+        if zipfile.is_zipfile(local_source):
+            if not extract_dir.is_dir():
+                with zipfile.ZipFile(local_source, "r") as zf:
+                    zf.extractall(extract_dir)
+            return extract_dir
         return local_source
 
     resp = requests.get(remote_source, stream=True)
@@ -54,10 +77,10 @@ def download_from_html(remote_source: str, local_source: str | None = None) -> s
     ]
     total_size = max(total_size) if total_size else 0
 
-    with open(local_source, "wb") as fdl:
+    with open(str(local_source), "wb") as fdl:
         if total_size:
             with tqdm(
-                total=total_size, unit="B", unit_scale=True, desc=local_source
+                total=total_size, unit="B", unit_scale=True, desc=str(local_source)
             ) as pbar:
                 for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
                     if chunk:
@@ -67,6 +90,12 @@ def download_from_html(remote_source: str, local_source: str | None = None) -> s
             for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
                 if chunk:
                     fdl.write(chunk)
+
+    if zipfile.is_zipfile(local_source):
+        with zipfile.ZipFile(local_source, "r") as zf:
+            zf.extractall(extract_dir)
+        return extract_dir
+
     return local_source
 
 

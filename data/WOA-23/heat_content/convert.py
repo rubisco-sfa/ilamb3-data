@@ -81,13 +81,13 @@ ds["ohc_stderr"] = (ds["ohc_stderr"] * 10).astype(np.float64)
 # Set ohc variable attrs
 ds = set_var_attrs(
     ds,
-    var="ohc",
-    cmip6_units="ZJ",
-    cmip6_standard_name="ocean_heat_content_anomaly",
-    cmip6_long_name="Global Annual Ocean (0-2000m Depth) Heat Content Anomaly (WOA09 1955-2006 Baseline)",
+    "ohc",
+    units="ZJ",
+    standard_name="ocean_heat_content_anomaly",
+    long_name="Global Annual Ocean (0-2000m Depth) Heat Content Anomaly (WOA09 1955-2006 Baseline)",
     ancillary_variables="ohc_stderr",
     cell_methods=None,
-    target_dtype=np.float64,
+    target_dtype=np.dtype("float64"),
     convert=False,
 )
 
@@ -128,13 +128,13 @@ ds["ohcJm2"] = ohcJm2
 # Set ohc_Jm2 variable attrs
 ds = set_var_attrs(
     ds,
-    var="ohcJm2",
-    cmip6_units="J m-2",
-    cmip6_standard_name="integral_wrt_depth_of_sea_water_potential_temperature_expressed_as_heat_content",
-    cmip6_long_name="Depth-Integrated Ocean Heat Content Anomaly (WOA09 1955-2006 Baseline) Computed As The Integral Over Depth of Sea Water (0-2000m) Potential Temperature",
+    "ohcJm2",
+    units="J m-2",
+    standard_name="integral_wrt_depth_of_sea_water_potential_temperature_expressed_as_heat_content",
+    long_name="Depth-Integrated Ocean Heat Content Anomaly (WOA09 1955-2006 Baseline) Computed As The Integral Over Depth of Sea Water (0-2000m) Potential Temperature",
     ancillary_variables=None,
     cell_methods="area: mean depth: mean time: mean",  # this came from the original dataset, so I'll keep it
-    target_dtype=np.float32,
+    target_dtype=np.dtype("float32"),
     convert=False,
 )
 

@@ -86,10 +86,10 @@ for var in vars:
     ds = set_var_attrs(
         ds,
         var,
-        ds[var].attrs["units"],
-        var_info[CFAttr.cf_standard_name.value],
-        var_info[CFAttr.variable_long_name.value],
-        target_dtype=np.float32,
+        units=ds[var].attrs["units"],
+        standard_name=var_info[CFAttr.cf_standard_name.value],
+        long_name=var_info[CFAttr.variable_long_name.value],
+        target_dtype=np.dtype("float32"),
     )
 
     # Remove some straggling var attrs

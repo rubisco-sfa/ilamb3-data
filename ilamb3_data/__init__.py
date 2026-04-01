@@ -8,7 +8,7 @@ import warnings
 import zipfile
 from pathlib import Path
 from typing import Optional
-from urllib.parse import urlparse
+from urllib.parse import unquote, urlparse
 
 import cftime as cf
 import numpy as np
@@ -53,7 +53,8 @@ def download_from_html(
             f"remote_source must be a str, not {type(remote_source).__name__}"
         )
     if not local_source:
-        filename = Path(urlparse(remote_source).path).name
+        unquoted_url = unquote(urlparse(remote_source).path)
+        filename = Path(unquoted_url).name
         local_source = Path(filename.replace(" ", "_"))
     else:
         local_source = Path(local_source)

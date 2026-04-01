@@ -27,7 +27,7 @@ local_sources = [str(RAW_PATH / Path(s).name) for s in remote_sources]
 for remote_source, local_source in zip(remote_sources, local_sources):
     if not Path(local_source).is_file():
         ild.download_from_html(remote_source, local_source)
-    download_stamp = ild.gen_utc_timestamp(Path(local_source).stat().st_mtime)
+download_stamp = ild.gen_utc_timestamp(Path(local_sources[0]).stat().st_mtime)
 
 # open and rename some variables
 ds = xr.open_mfdataset(local_sources)
@@ -54,17 +54,17 @@ for var in variables:
     )
 
     # get standard/long name info and manage when it's not in cmip6 CV or is uncertainty
+    var_info = {
+        "cf_standard_name": out[var].attrs.get("standard_name", var),
+        "variable_long_name": out[var].attrs.get(
+            "long_name", var.replace("_", " ").title()
+        ),
+        "variable_units": out[var].attrs.get("units", ""),
+    }
     if "_sd" not in var:
         try:
             var_info = ild.get_cmip6_variable_info(var, var)
         except Exception:
-            var_info = {
-                "cf_standard_name": out[var].attrs.get("standard_name", var),
-                "variable_long_name": out[var].attrs.get(
-                    "long_name", var.replace("_", " ").title()
-                ),
-                "variable_units": out[var].attrs.get("units", ""),
-            }
             var_info["variable_long_name"] = (
                 var_info["variable_long_name"].replace("_", " ").title()
             )
@@ -72,12 +72,12 @@ for var in variables:
     # format the var attrs
     out = ild.set_var_attrs(
         out,
-        var=var,
-        cmip6_units=var_info["variable_units"],
-        cmip6_standard_name=var_info["cf_standard_name"],
-        cmip6_long_name=var_info["variable_long_name"],
+        var,
+        units=var_info["variable_units"],
+        standard_name=var_info["cf_standard_name"],
+        long_name=var_info["variable_long_name"],
         ancillary_variables=uncert,
-        target_dtype=np.float32,
+        target_dtype=np.dtype("float32"),
         convert=False,
     )
 

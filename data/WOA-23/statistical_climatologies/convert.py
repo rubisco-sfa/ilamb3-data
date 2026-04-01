@@ -165,16 +165,13 @@ for name, period_dict in local_source_dict.items():
             ds[std_var].attrs["units"] = "umol kg-1"
         ds = set_var_attrs(
             ds,
-            var=std_var,
-            cmip6_units=ds[std_var].attrs["units"],
-            cmip6_standard_name=ds[std_var].attrs.get("standard_name"),
-            cmip6_long_name=(
-                ds[std_var].attrs.get("long_name").replace("_", " ").title()
-            ),
+            std_var,
+            units=ds[std_var].attrs["units"],
+            standard_name=ds[std_var].attrs.get("standard_name"),
+            long_name=(ds[std_var].attrs.get("long_name").replace("_", " ").title()),
             ancillary_variables=f"{std_var}_stderr",
             cell_methods="area: mean depth: mean time: mean within years time: mean over years",
-            target_dtype=np.float32,
-            convert=False,
+            target_dtype=np.dtype("float32"),
         )
         ds[std_var].attrs.pop("grid_mapping", None)
 

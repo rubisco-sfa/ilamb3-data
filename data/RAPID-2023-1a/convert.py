@@ -71,12 +71,11 @@ ds["msftmz"] = ds["msftmz"].expand_dims({"depth": ds["depth"], "lat": ds["lat"]}
 var_info = get_cmip6_variable_info("msftmz", "msftmz")
 ds = set_var_attrs(
     ds,
-    var="msftmz",
-    cmip6_units=var_info["variable_units"],
-    cmip6_standard_name=var_info["cf_standard_name"],
-    cmip6_long_name=var_info["variable_long_name"],
-    target_dtype=np.float32,
-    convert=False,
+    "msftmz",
+    units=var_info["variable_units"],
+    standard_name=var_info["cf_standard_name"],
+    long_name=var_info["variable_long_name"],
+    target_dtype=np.dtype("float32"),
 )
 
 # Clean up attrs

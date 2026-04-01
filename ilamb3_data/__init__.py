@@ -837,6 +837,7 @@ def set_var_attrs(
     flag_meanings: list[str] | None = None,
     extra_attrs: dict | None = None,
     target_dtype: str | np.dtype | None = None,
+    nodata_value: int | float | None = None,
     convert: bool = False,
     compression: dict | None = None,
     overwrite: bool = False,
@@ -877,6 +878,11 @@ def set_var_attrs(
     target_dtype : str or np.dtype, optional
         The desired final dtype for the variable (e.g., "float32", "int16").
         If not provided, keeps existing dtype.
+    nodata_value : int, float, or None, optional
+        The value that is currently used to denote missing data for the variable. This
+        value will be converted to the appropriate CF _FillValue based on the current
+        dtype or the target_dtype if provided. If nodata_value is None, the function
+        will look for existing missing value markers in attrs/encoding.
     convert : bool, default False
         Whether to convert the variable to the target unit.
         If False and the variable has existing units that differ from the target,
@@ -899,7 +905,16 @@ def set_var_attrs(
     da = ds[var]
 
     # capture existing missing_value marker
-    mv = da.encoding.get("missing_value", da.attrs.get("missing_value", None))
+    _NODATA_KEYS = ("missing_value", "_FillValue", "nodata")
+
+    def _get_nodata(da: xr.DataArray) -> int | float | None:
+        for key in _NODATA_KEYS:
+            val = da.encoding.get(key, da.attrs.get(key, None))
+            if val is not None:
+                return val
+        return None
+
+    mv = nodata_value if nodata_value is not None else _get_nodata(da)
 
     # optionally overwrite all existing attrs
     if overwrite:
@@ -983,6 +998,8 @@ def set_var_attrs(
             fill = _FILL_VALUES.get({4: np.float32, 8: np.float64}[final_dt.itemsize])
         elif final_dt.kind == "S":
             fill = _FILL_VALUES[np.dtype("S1")]
+    if fill is None:
+        raise ValueError(f"No CF _FillValue defined for dtype '{final_dt}'.")
 
     # handle data and encoding based on dtype
     if np.issubdtype(final_dt, np.floating):
@@ -990,11 +1007,12 @@ def set_var_attrs(
         da.encoding["_FillValue"] = fill
     else:
         # Ints/bytes: replace NaNs and old markers, cast to final_dtype
-        if np.issubdtype(da.dtype, np.floating):
-            da = da.fillna(fill)
+        data = da.values.copy()
+        if np.issubdtype(data.dtype, np.floating):
+            data = np.where(np.isnan(data), fill, data)
         if mv is not None:
-            da = da.where(da != mv, fill)
-        da = da.astype(final_dt)
+            data[data == mv] = fill
+        da = da.copy(data=data.astype(final_dt))
         da.encoding["_FillValue"] = fill
 
     # remove any old missing_value attributes; not required by CF anymore

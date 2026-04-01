@@ -578,9 +578,6 @@ def set_lat_attrs(ds: xr.Dataset, compression: dict | None = None) -> xr.Dataset
     """
     Ensure the xarray dataset's latitude attributes are formatted according to CF-Conventions.
     """
-    # If lat is a dimension but not a variable, create it from the dim coordinates
-    if "lat" in ds.dims and "lat" not in ds:
-        ds = ds.assign_coords(lat=ds["lat"])
 
     assert "lat" in ds
     da = ds["lat"]
@@ -609,9 +606,6 @@ def set_lon_attrs(ds: xr.Dataset, compression: dict | None = None) -> xr.Dataset
     """
     Ensure the xarray dataset's longitude attributes are formatted according to CF-Conventions.
     """
-    # If lon is a dimension but not a variable, create it from the dim coordinates
-    if "lon" in ds.dims and "lon" not in ds:
-        ds = ds.assign_coords(lon=ds["lon"])
 
     assert "lon" in ds
     da = ds["lon"]

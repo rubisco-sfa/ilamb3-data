@@ -16,20 +16,22 @@ RAW_PATH = Path("_raw")
 if not RAW_PATH.is_dir():
     RAW_PATH.mkdir()
 
+
 # --------------------------------------------------------------------------------------
 # 1) Download
 # --------------------------------------------------------------------------------------
 
+
 # Download CAVM 2.0 data from Mendeley Data HTML and unzip
 remote_source = "https://data.mendeley.com/public-files/datasets/c4xj5rv6kv/files/5223c414-234a-498c-ae08-3100cb38510f/file_downloaded"
 local_source = RAW_PATH / "Raster CAVM GIS data.zip"
-if not local_source.is_file():
-    local_source = ild.download_from_html(remote_source, local_source)
+local_source = ild.download_from_html(remote_source, local_source)
 download_stamp = ild.gen_utc_timestamp(local_source.stat().st_mtime)
 
 # --------------------------------------------------------------------------------------
 # 2) Read Data
 # --------------------------------------------------------------------------------------
+
 
 # Read TIF and legend CSV
 ds = rxr.open_rasterio(local_source / "raster_cavm_v1.tif", band_as_variable=True)
@@ -64,6 +66,7 @@ legend = local_source / "Raster CAVM legend.csv"
 df = pd.read_csv(
     legend, skiprows=[0, 1], na_filter=False, dtype={"Raster code": np.int8}
 )
+df = df.sort_values("Raster code").reset_index(drop=True)
 # Fill in some missing short descriptions manually
 desc_fill = {
     "FW": "Fresh water",
@@ -74,17 +77,7 @@ desc_fill = {
 mask = df["Short Description"].str.strip() == ""
 df.loc[mask, "Short Description"] = df.loc[mask, "Vegetation Unit"].map(desc_fill)
 
-# --------------------------------------------------------------------------------------
-# 4) Automatic cleaning/formatting using ILAMB utilities
-# --------------------------------------------------------------------------------------
-
-# Set lat/lon/var attributes
-ds = ild.set_lat_attrs(ds)
-ds = ild.set_lon_attrs(ds)
-ds = ild.set_coord_bounds(ds, "lat")
-ds = ild.set_coord_bounds(ds, "lon")
-
-# I did this for fun, but could be useful if we ever want to visualize CAVM
+# Palette for CAVM visualization
 palette = {
     1: "#d7d7b3",
     2: "#a8a802",
@@ -108,6 +101,25 @@ palette = {
     99: "#cccccc",
 }
 
+# Merge palette into df and filter to codes present in the raster so that
+# flag_values, flag_meanings, flag_descriptions, and flag_colors all align.
+df["color"] = df["Raster code"].map(palette)
+raster_codes = set(
+    np.unique(ds[VAR].values[(~np.isnan(ds[VAR].values)) & (ds[VAR].values != 127)])
+)
+df = df[df["Raster code"].isin(raster_codes)].copy()
+
+
+# --------------------------------------------------------------------------------------
+# 4) Automatic cleaning/formatting using ILAMB utilities
+# --------------------------------------------------------------------------------------
+
+# Set lat/lon/var attributes
+ds = ild.set_lat_attrs(ds)
+ds = ild.set_lon_attrs(ds)
+ds = ild.set_coord_bounds(ds, "lat")
+ds = ild.set_coord_bounds(ds, "lon")
+
 # Decisions about naming derived from https://raw.githubusercontent.com/PCMDI/mip-cmor-tables/refs/heads/main/MIP_variables.json
 # Search for "landCoverFrac" to see how I modeled this
 ds = ild.set_var_attrs(
@@ -116,15 +128,13 @@ ds = ild.set_var_attrs(
     units="",
     standard_name="cover_category",
     long_name="Vegetation or Land-Cover Category",
-    flag_values=np.unique(
-        ds[VAR].values[(~np.isnan(ds[VAR].values)) & (ds[VAR].values != 127)]
-    ),
+    flag_values=np.asarray(df["Raster code"], dtype=np.int8),
     flag_meanings=df["Vegetation Unit"].to_list(),
     extra_attrs={
         "flag_descriptions": " ".join(
             _clean_flag_description(s) for s in df["Short Description"]
         ),
-        "flag_colors": " ".join(palette.values()),
+        "flag_colors": " ".join(df["color"]),
     },
     target_dtype=np.dtype("int8"),
     compression={"zlib": True, "complevel": 4, "shuffle": True},
@@ -144,7 +154,7 @@ tracking_id = ild.gen_trackingid()
 ds = ild.set_ods26_global_attrs(
     ds,
     activity_id="ILAMB",
-    contact="Martha Raynolds (mkraynolds@alaska.ledu)",
+    contact="Martha Raynolds (mkraynolds@alaska.edu)",
     creation_date=generate_stamp,
     dataset_contributor="Morgan Steckler",
     doi="https://doi.org/10.17632/c4xj5rv6kv.2",
@@ -156,7 +166,7 @@ ds = ild.set_ods26_global_attrs(
 {generate_stamp}: "CMORized" data from Raster CAVM 2.0 (downloaded from Mendeley Data)\n
 {generate_stamp}: Reprojected to lat/lon and added metadata using ILAMB utilities
 """,
-    institution="University of Alaska, Fairbanks",
+    institution="University of Alaska, Fairbanks, USA",
     institution_id="UAF",
     license="https://creativecommons.org/licenses/by-nc/3.0/deed.en",
     nominal_resolution="1 km",
@@ -186,8 +196,8 @@ ds.to_netcdf(out_path)
 # Plotting verification
 # --------------------------------------------------------------------------------------
 
-colors = ds[VAR].attrs["flag_colors"].split()
 codes = ds[VAR].attrs["flag_values"]
+colors = ds[VAR].attrs["flag_colors"].split()
 labels = ds[VAR].attrs["flag_meanings"].split()
 
 idx_map = {c: i for i, c in enumerate(codes)}
@@ -195,8 +205,8 @@ mapped = np.vectorize(lambda x: idx_map.get(x, np.nan), otypes=[float])(ds[VAR].
 
 fig, ax = plt.subplots(figsize=(10, 5))
 ax.pcolormesh(
-    ds[VAR]["lon"],
-    ds[VAR]["lat"],
+    ds["lon"],
+    ds["lat"],
     mapped,
     cmap=ListedColormap(colors),
     norm=BoundaryNorm(np.arange(-0.5, len(codes)), len(codes)),

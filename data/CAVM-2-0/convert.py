@@ -84,6 +84,30 @@ ds = ild.set_lon_attrs(ds)
 ds = ild.set_coord_bounds(ds, "lat")
 ds = ild.set_coord_bounds(ds, "lon")
 
+# I did this for fun, but could be useful if we ever want to visualize CAVM
+palette = {
+    1: "#d7d7b3",
+    2: "#a8a802",
+    3: "#a68282",
+    4: "#8282a0",
+    5: "#cdcd66",
+    21: "#ffebaf",
+    22: "#ffd37f",
+    23: "#e6e600",
+    24: "#ffff00",
+    31: "#dfb0b0",
+    32: "#db949e",
+    33: "#97e602",
+    34: "#38a802",
+    41: "#9eedbd",
+    42: "#73ffdf",
+    43: "#04e6a9",
+    91: "#0070ff",
+    92: "#e0f2ff",
+    93: "#ffffff",
+    99: "#cccccc",
+}
+
 # Decisions about naming derived from https://raw.githubusercontent.com/PCMDI/mip-cmor-tables/refs/heads/main/MIP_variables.json
 # Search for "landCoverFrac" to see how I modeled this
 ds = ild.set_var_attrs(
@@ -99,7 +123,8 @@ ds = ild.set_var_attrs(
     extra_attrs={
         "flag_descriptions": " ".join(
             _clean_flag_description(s) for s in df["Short Description"]
-        )
+        ),
+        "flag_colors": " ".join(palette.values()),
     },
     target_dtype=np.dtype("int8"),
     compression={"zlib": True, "complevel": 4, "shuffle": True},
@@ -161,31 +186,10 @@ ds.to_netcdf(out_path)
 # Plotting verification
 # --------------------------------------------------------------------------------------
 
-# Visualize the data
-palette = {
-    1: "#d7d7b3",
-    2: "#a8a802",
-    3: "#a68282",
-    4: "#8282a0",
-    5: "#cdcd66",
-    21: "#ffebaf",
-    22: "#ffd37f",
-    23: "#e6e600",
-    24: "#ffff00",
-    31: "#dfb0b0",
-    32: "#db949e",
-    33: "#97e602",
-    34: "#38a802",
-    41: "#9eedbd",
-    42: "#73ffdf",
-    43: "#04e6a9",
-    91: "#0070ff",
-    92: "#e0f2ff",
-    93: "#ffffff",
-    99: "#cccccc",
-}
+colors = ds[VAR].attrs["flag_colors"].split()
+codes = ds[VAR].attrs["flag_values"]
+labels = ds[VAR].attrs["flag_meanings"].split()
 
-codes = list(palette)
 idx_map = {c: i for i, c in enumerate(codes)}
 mapped = np.vectorize(lambda x: idx_map.get(x, np.nan), otypes=[float])(ds[VAR].values)
 
@@ -194,11 +198,11 @@ ax.pcolormesh(
     ds[VAR]["lon"],
     ds[VAR]["lat"],
     mapped,
-    cmap=ListedColormap(list(palette.values())),
+    cmap=ListedColormap(colors),
     norm=BoundaryNorm(np.arange(-0.5, len(codes)), len(codes)),
 )
 cbar = plt.colorbar(ax.collections[0], ax=ax, ticks=range(len(codes)))
-cbar.ax.set_yticklabels(df["Vegetation Unit"].to_list())
+cbar.ax.set_yticklabels(labels)
 plt.tight_layout()
 plt.savefig(f"{VAR}.png", dpi=300)
 plt.close()

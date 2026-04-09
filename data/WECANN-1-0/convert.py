@@ -70,11 +70,11 @@ ds.gpp.attrs["Units"] = "g m-2 day-1"
 for var, info in zip(vars, var_info):
     ds = set_var_attrs(
         ds,
-        var=var,
-        cmip6_units=info["variable_units"],
-        cmip6_standard_name=info["cf_standard_name"],
-        cmip6_long_name=info["variable_long_name"],
-        target_dtype=np.float32,
+        var,
+        units=info["variable_units"],
+        standard_name=info["cf_standard_name"],
+        long_name=info["variable_long_name"],
+        target_dtype=np.dtype("float32"),
         convert=True,
     )
 

@@ -49,12 +49,12 @@ mrro_info = get_cmip6_variable_info("mrro", "mrro")
 # Set correct attribute information for the vars
 ds = set_var_attrs(
     ds,
-    var="mrro",
-    cmip6_units=mrro_info["variable_units"],
-    cmip6_standard_name=mrro_info["cf_standard_name"],
-    cmip6_long_name=mrro_info["variable_long_name"],
+    "mrro",
+    units=mrro_info["variable_units"],
+    standard_name=mrro_info["cf_standard_name"],
+    long_name=mrro_info["variable_long_name"],
     ancillary_variables="mrro_sd",
-    target_dtype=np.float32,
+    target_dtype=np.dtype("float32"),
     convert=True,
 )
 
@@ -91,7 +91,7 @@ out_ds = set_ods26_global_attrs(
     grid_label="gn",
     has_aux_unc="TRUE",
     history=f"""
-{download_stamp}: downloaded {remote_source};
+{download_stamp}: downloaded {remote_sources};
 {creation_stamp}: converted to obs4MIPs format""",
     institution="ARC Centre of Excellence for Climate System Science, NSW, Australia",
     institution_id="ARCCSS",

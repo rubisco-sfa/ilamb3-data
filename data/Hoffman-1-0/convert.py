@@ -49,13 +49,12 @@ for var in VARS:
     # Set correct attribute information for the vars
     ds = set_var_attrs(
         ds,
-        var=var,
-        cmip6_units=var_info["variable_units"],
-        cmip6_standard_name=var_info["cf_standard_name"],
-        cmip6_long_name=var_info["variable_long_name"],
+        var,
+        units=var_info["variable_units"],
+        standard_name=var_info["cf_standard_name"],
+        long_name=var_info["variable_long_name"],
         ancillary_variables=f"{var}_{UNC}",
-        target_dtype=np.float32,
-        convert=False,
+        target_dtype=np.dtype("float32"),
     )
 
     # Assign ancillary variables

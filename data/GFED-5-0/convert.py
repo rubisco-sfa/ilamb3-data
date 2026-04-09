@@ -167,11 +167,10 @@ var_info = get_cmip6_variable_info("burntFractionAll", "burntFractionAll")
 ds = set_var_attrs(
     ds,
     var="burntFractionAll",
-    cmip6_units="%",
-    cmip6_standard_name=var_info["cf_standard_name"],
-    cmip6_long_name=var_info["variable_long_name"],
-    target_dtype=np.float32,
-    convert=False,
+    units="%",
+    standard_name=var_info["cf_standard_name"],
+    long_name=var_info["variable_long_name"],
+    target_dtype=np.dtype("float32"),
 )
 
 # Set global attributes and export

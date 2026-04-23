@@ -37,6 +37,7 @@ def check_netcdf(filename: str) -> list[str]:
     # If neither, fail
 
     # Return grid_label from global attrs
+    return list()
 
 
 ########################################################################################
@@ -113,16 +114,16 @@ class ILAMBDataset(BaseModel):
     model_config = ConfigDict(arbitrary_types_allowed=True)
     ds: xr.Dataset
 
-    # Check if we can validate
-    check_netcdf()
+    # # Check if we can validate
+    # check_netcdf()
 
-    # Check if gridded or site (simple check)
-    is_gridded()
-    is_site()
+    # # Check if gridded or site (simple check)
+    # is_gridded()
+    # is_site()
 
     # See if gridded or site designation matches what is expected in the file structure
     class SiteDataset(BaseModel):
-    """A dataset containing site data, with at least a site dimension."""
+        """A dataset containing site data, with at least a site dimension."""
 
     # site dimension is an existing dim (with coordinates) that isn't time
     # lat/lon should not be dimensions, but should be variables with the site dimension and attributes that indicate they are lat/lon (e.g., standard_name, units, etc.)
@@ -131,7 +132,6 @@ class ILAMBDataset(BaseModel):
 
     model_config = ConfigDict(arbitrary_types_allowed=True)
     ds: xr.Dataset
-
 
     @field_validator("ds")
     @classmethod
@@ -214,6 +214,7 @@ class ILAMBDataset(BaseModel):
         def _site_unit_checker(cls, ds: xr.Dataset) -> xr.Dataset:
             """Site attribute and encoding checker."""
             # site should not have units
+            return xr.Dataset()
 
         ds = check_attrs(cls, ds, _site_unit_checker)
         return ds

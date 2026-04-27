@@ -175,6 +175,98 @@ def create_output_filename(attrs: dict) -> str:
     return filename
 
 
+def create_obs4mips26_filename(ds: xr.Dataset, attrs: dict) -> str:
+    """
+    <variable_id>_<frequency>_<source_id>_<variant_label>_<grid_label>[_<time_range>].nc
+    """
+    # For time-invariant fields, the last segment (time_range) above is omitted.
+    # Example: siconc_mon_OSI-SAF-450-a-3-0_PCMDI-BE_gr1_185001-202301.nc
+    required_keys = [
+        "variable_id",
+        "frequency",
+        "source_id",
+        "variant_label",
+        "grid_label",
+    ]
+
+    time_var = ds["time"]
+    if np.issubdtype(time_var.dtype, np.floating) or np.issubdtype(
+        time_var.dtype, np.integer
+    ):
+        decoded = xr.coding.times.decode_cf_datetime(
+            time_var.values,
+            units=time_var.attrs["units"],
+            calendar=time_var.attrs["calendar"],
+        )
+        t0 = pd.Timestamp(decoded[0])
+        t1 = pd.Timestamp(decoded[-1])
+    else:
+        t0 = pd.Timestamp(time_var.values[0])
+        t1 = pd.Timestamp(time_var.values[-1])
+
+    # if time coordiante present and more than 1 len, add time range to required keys
+    if "time" in ds.coords and len(ds["time"]) > 1:
+        freq = attrs["frequency"].lower()
+        if freq == "fx":
+            time_range = None
+        else:
+
+            def _fmt(t, freq):
+                if freq in ["yr", "dec", "yrPt"]:
+                    return f"{t.year:04d}"
+                elif freq in ["mon", "monC"]:
+                    return f"{t.year:04d}{t.month:02d}"
+                elif freq == "day":
+                    return f"{t.year:04d}{t.month:02d}{t.day:02d}"
+                elif freq in ["6hr", "3hr", "1hr", "1hrCM", "6hrPt", "3hrPt", "1hrPt"]:
+                    return f"{t.year:04d}{t.month:02d}{t.day:02d}{t.hour:02d}{t.minute:02d}"
+                elif freq == "subhrPt":
+                    return f"{t.year:04d}{t.month:02d}{t.day:02d}{t.hour:02d}{t.minute:02d}{t.second:02d}"
+                else:
+                    raise ValueError(
+                        f"Unrecognized frequency {freq} for time range formatting."
+                    )
+
+            time_range = f"{_fmt(t0, freq)}-{_fmt(t1, freq)}"
+    else:
+        time_range = None
+
+    # check for missing keys (no longer includes time_range)
+    missing = [key for key in required_keys if key not in attrs]
+    if missing:
+        raise ValueError(
+            f"Missing required attributes: {', '.join(missing)}. "
+            f"Expected keys: {', '.join(required_keys)}"
+        )
+
+    # check for invalid characters in all attrs values
+    for key in required_keys:
+        value = attrs[key]
+        if not isinstance(value, str):
+            raise ValueError(f"Attribute '{key}' must be a string, got {type(value)}")
+        if key == "variable_id" and "-" in value:
+            raise ValueError(
+                f"Attribute 'variable_id' must not contain hyphens: '{value}'"
+            )
+        if not re.match(r"^[a-zA-Z0-9-]+$", value):
+            raise ValueError(
+                f"Invalid characters in attribute '{key}': '{value}'. "
+                "Only letters, numbers, and hyphens are allowed."
+            )
+
+    # create filename
+    filename = (
+        "{variable_id}_{frequency}_{source_id}_{variant_label}_{grid_label}".format(
+            **attrs
+        )
+    )
+    if time_range is not None:
+        filename += f"_{time_range}"
+    filename += ".nc"
+
+    return filename
+
+
 def get_cmip6_variable_info(
     search_key: str, variable_id: str | None = None
 ) -> dict[str, str]:
@@ -574,58 +666,139 @@ def set_time_attrs(
     return ds
 
 
+def _clean_coord_values(values: np.ndarray, name: str) -> np.ndarray:
+    """
+    Round coordinate values to suppress float32-cast noise (e.g. -89.7499939 -> -89.75).
+    Decimals are inferred from the grid spacing. Warns if the grid is irregular.
+    """
+    if values.size < 2:
+        return values
+
+    diffs = np.abs(np.diff(values))
+    spacing = float(np.median(diffs))
+    if spacing == 0:
+        return values
+
+    # Flag irregular grids — heuristic: spacings vary by more than 1% of the median.
+    if np.max(np.abs(diffs - spacing)) > 0.01 * spacing:
+        warnings.warn(
+            f"{name!r} coordinate spacing is irregular "
+            f"(median={spacing}, range=[{diffs.min()}, {diffs.max()}]); "
+            "rounding may distort values. Assuming lat/lon CRS.",
+            stacklevel=2,
+        )
+
+    decimals = max(0, int(np.ceil(-np.log10(spacing))) + 1)
+    return np.round(values, decimals)
+
+
 def set_lat_attrs(ds: xr.Dataset, compression: dict | None = None) -> xr.Dataset:
     """
-    Ensure the xarray dataset's latitude attributes are formatted according to CF-Conventions.
+    Set up the latitude coordinate with CF-compliant attributes and encoding.
+
+    Asserts that the dataset has a ``lat`` coordinate, creates and sets attributes
+    "axis", "units", "standard_name", "long_name", and "bounds" (if already present),
+    and sets encoding to {"_FillValue": None, "dtype": "float64"}, with optional
+    additional compression settings.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset containing a 'lat' coordinate.
+    compression : dict, optional
+        Encoding options to apply to the coordinate.
+
+    Returns
+    -------
+    xr.Dataset
+        Dataset with updated latitude coordinate attributes and encoding.
     """
 
     assert "lat" in ds
-    da = ds["lat"]
+    ds = ds.assign_coords(lat=_clean_coord_values(ds["lat"].values, "lat"))
 
+    # gather lat data array and existing bounds value (or None)
+    da = ds["lat"]
     bounds = da.attrs.get("bounds")
 
+    # set base attributes
     da.attrs = {
         "axis": "Y",
         "units": "degrees_north",
         "standard_name": "latitude",
         "long_name": "Latitude",
     }
-
     if bounds is not None:
         da.attrs["bounds"] = bounds
 
+    # set encoding
     da.encoding.clear()
     da.encoding = {"_FillValue": None, "dtype": "float64"}
     if compression is not None:
         da.encoding.update(compression)
+
+    # assign lat data array back to dataset
     ds["lat"] = da
     return ds
 
 
-def set_lon_attrs(ds: xr.Dataset, compression: dict | None = None) -> xr.Dataset:
+def set_lon_attrs(
+    ds: xr.Dataset, compression: dict | None = None, to_180: bool = False
+) -> xr.Dataset:
     """
-    Ensure the xarray dataset's longitude attributes are formatted according to CF-Conventions.
+    Set up the longitude coordinate with CF-compliant attributes and encoding.
+
+    Asserts that the dataset has a ``lon`` coordinate, creates and sets attributes
+    "axis", "units", "standard_name", "long_name", and "bounds" (if already present),
+    and sets encoding to {"_FillValue": None, "dtype": "float64"}, with optional
+    additional compression settings.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset containing a 'lon' coordinate.
+    compression : dict, optional
+        Encoding options to apply to the coordinate.
+    to_180 : bool, default False
+        If True and longitudes are in [0, 360), convert them to [-180, 180)
+        and sort the dataset along the lon dimension. No-op if longitudes
+        are already within [-180, 180].
+
+    Returns
+    -------
+    xr.Dataset
+        Dataset with updated longitude coordinate attributes and encoding.
     """
 
     assert "lon" in ds
-    da = ds["lon"]
+    ds = ds.assign_coords(lon=_clean_coord_values(ds["lon"].values, "lon"))
 
+    # optionally convert to [-180, 180) if currently in [0, 360)
+    if to_180 and float(ds["lon"].max()) > 180:
+        ds = ds.assign_coords(lon=(((ds["lon"] + 180) % 360) - 180))
+        ds = ds.sortby("lon")
+
+    # gather lon data array and existing bounds value (or None)
+    da = ds["lon"]
     bounds = da.attrs.get("bounds")
 
+    # set base attributes
     da.attrs = {
         "axis": "X",
         "units": "degrees_east",
         "standard_name": "longitude",
         "long_name": "Longitude",
     }
-
     if bounds is not None:
         da.attrs["bounds"] = bounds
 
+    # set encoding
     da.encoding.clear()
     da.encoding = {"_FillValue": None, "dtype": "float64"}
     if compression is not None:
         da.encoding.update(compression)
+
+    # assign lon data array back to dataset
     ds["lon"] = da
     return ds
 

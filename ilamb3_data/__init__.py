@@ -1,4 +1,5 @@
 import datetime
+import fnmatch
 import json
 import os
 import re
@@ -8,13 +9,14 @@ import warnings
 import zipfile
 from pathlib import Path
 from typing import Optional
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import cftime as cf
 import numpy as np
 import pandas as pd
 import pooch
 import requests
+import s3fs
 import xarray as xr
 from cf_units import Unit
 from intake_esgf import ESGFCatalog
@@ -38,10 +40,19 @@ def create_registry(registry_file: str) -> pooch.Pooch:
 
 
 def download_from_html(
-    remote_source: str, local_source: Path | str | None = None
-) -> Path:
+    remote_source: str,
+    local_source: Path | str | None = None,
+    *,
+    pattern: str | None = None,
+) -> Path | list[Path]:
     """
-    Download a file from a remote URL to a local path.
+    Download a file, or files matching a wildcard, from a remote URL.
+
+    When ``pattern`` is provided, ``remote_source`` must be an HTML page with
+    links and ``local_source`` is treated as a destination directory. Matching
+    uses shell-style wildcards (for example, ``*.zip``), and a list of
+    downloaded or extracted paths is returned.
+
     If the "content-length" header is missing, it falls back to a simple download.
     If the downloaded file is a .zip, it is extracted into a directory of the same name
     and the extraction directory is returned.
@@ -52,6 +63,41 @@ def download_from_html(
         raise TypeError(
             f"remote_source must be a str, not {type(remote_source).__name__}"
         )
+    if pattern is not None:
+        if not local_source:
+            raise ValueError("local_source must be a directory when pattern is used")
+
+        destination = Path(local_source)
+        destination.mkdir(parents=True, exist_ok=True)
+        page = requests.get(remote_source)
+        page.raise_for_status()
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(page.text, "html.parser")
+        urls = [
+            urljoin(remote_source, href)
+            for link in soup.find_all("a", href=True)
+            if (href := link.get("href"))
+            and fnmatch.fnmatch(Path(urlparse(href).path).name, pattern)
+        ]
+
+        # Preserve listing order while ignoring duplicate links.
+        urls = list(dict.fromkeys(urls))
+        if not urls:
+            raise FileNotFoundError(
+                f"No files matching {pattern!r} found at {remote_source}"
+            )
+        downloaded_files = []
+        for url in urls:
+            downloaded_file = download_from_html(
+                url,
+                destination / Path(unquote(urlparse(url).path)).name,
+            )
+            if isinstance(downloaded_file, list):
+                raise TypeError("Expected a single downloaded file")
+            downloaded_files.append(downloaded_file)
+        return downloaded_files
+
     if not local_source:
         unquoted_url = unquote(urlparse(remote_source).path)
         filename = Path(unquoted_url).name
@@ -97,6 +143,96 @@ def download_from_html(
             zf.extractall(extract_dir)
         return extract_dir
 
+    return local_source
+
+
+def download_from_s3(
+    remote_source: str,
+    local_source: Path | str,
+    *,
+    pattern: str = "*",
+    anon: bool = True,
+) -> list[Path]:
+    """Download objects matching a wildcard from an S3 bucket or prefix."""
+    if not isinstance(remote_source, str):
+        raise TypeError(
+            f"remote_source must be a str, not {type(remote_source).__name__}"
+        )
+
+    destination = Path(local_source)
+    destination.mkdir(parents=True, exist_ok=True)
+    remote_pattern = f"{remote_source.rstrip('/')}/{pattern}"
+    filesystem = s3fs.S3FileSystem(anon=anon)
+    remote_files = filesystem.glob(remote_pattern)
+    if not remote_files:
+        raise FileNotFoundError(f"No files matching {remote_pattern!r}")
+
+    local_files = []
+    for remote_file in remote_files:
+        local_file = destination / Path(remote_file).name.replace(" ", "_")
+        if not local_file.is_file():
+            filesystem.get(remote_file, str(local_file))
+        local_files.append(local_file)
+    return local_files
+
+
+def download_from_arcgis_rest(
+    remote_source: str,
+    local_source: Path | str,
+    *,
+    where: str | list[str] = "1=1",
+    out_fields: str = "*",
+    out_sr: int = 4326,
+    timeout: int = 180,
+) -> Path:
+    """Query an ArcGIS REST feature layer and save the results as GeoJSON."""
+    if not isinstance(remote_source, str):
+        raise TypeError(
+            f"remote_source must be a str, not {type(remote_source).__name__}"
+        )
+
+    local_source = Path(local_source)
+    if local_source.is_file():
+        return local_source
+
+    queries = [where] if isinstance(where, str) else where
+    if not queries:
+        raise ValueError("where must contain at least one query")
+
+    features = []
+    query_url = f"{remote_source.rstrip('/')}/query"
+    for query in queries:
+        response = requests.get(
+            query_url,
+            params={
+                "where": query,
+                "outFields": out_fields,
+                "returnGeometry": "true",
+                "outSR": out_sr,
+                "f": "geojson",
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        result = response.json()
+        if "error" in result:
+            error = result["error"]
+            message = error.get("message", "Unknown ArcGIS REST error")
+            details = "; ".join(error.get("details", []))
+            if details:
+                message = f"{message}: {details}"
+            raise RuntimeError(message)
+        if result.get("type") != "FeatureCollection" or not isinstance(
+            result.get("features"), list
+        ):
+            raise ValueError("ArcGIS REST response is not a GeoJSON FeatureCollection")
+        features.extend(result["features"])
+
+    local_source.parent.mkdir(parents=True, exist_ok=True)
+    local_source.write_text(
+        json.dumps({"type": "FeatureCollection", "features": features}),
+        encoding="utf-8",
+    )
     return local_source
 
 

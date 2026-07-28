@@ -154,6 +154,22 @@ source_ids = xr.DataArray(
     coords={"lat": lat, "lon": lon},
 )
 
+# Crop to valid data with one grid cell of padding.
+valid = source_ids != -1
+
+lat_indices = np.flatnonzero(valid.any(dim="lon").values)
+lon_indices = np.flatnonzero(valid.any(dim="lat").values)
+
+lat_start = max(0, lat_indices[0] - 1)
+lat_stop = min(source_ids.sizes["lat"], lat_indices[-1] + 2)
+lon_start = max(0, lon_indices[0] - 1)
+lon_stop = min(source_ids.sizes["lon"], lon_indices[-1] + 2)
+
+source_ids = source_ids.isel(
+    lat=slice(lat_start, lat_stop),
+    lon=slice(lon_start, lon_stop),
+)
+
 ########################################################################################
 # Aggregate the rasterized HUC2 regions into larger units & set attributes
 
@@ -248,7 +264,7 @@ for VAR_ID in VAR_IDS:
         nominal_resolution="0.25 degree",
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/tree/main/data/WBD-HUC02-2024/convert.py",
         references="Jones, K.A., Niknami, L.S., Buto, S.G., and Decker, D., 2022, Federal standards and procedures for the national Watershed Boundary Dataset (WBD) (5 ed.): U.S. Geological Survey Techniques and Methods 11-A3, 54 p., https://doi.org/10.3133/tm11A3.",
-        region="",
+        region="conus",
         source="Watershed Boundary Dataset (WBD) Hydrologic Unit Code 2 (HUC02) version 2024",
         source_data_retrieval_date=download_date,
         source_data_url=remote_source,

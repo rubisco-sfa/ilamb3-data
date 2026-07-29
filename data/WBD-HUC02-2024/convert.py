@@ -23,29 +23,32 @@ from ilamb3_data import (
 
 VAR_IDS = ["huc02sel18", "huc02agg04", "huc02agg01"]
 
+# The meanings and descriptions need to be unique across all aggregates. If we try to
+# run for multiple aggregates, ilamb3 will overwrite the meanings and descriptions if
+# there are duplicates.
 AGGREGATE_GROUPS = {
     "huc02agg04": [
         {
             "value": 0,
-            "meaning": "01",
+            "meaning": "huc02eastconus",
             "description": "East_Contiguous_US_HUCs",
             "hucs": ["01", "02", "03", "05", "06"],
         },
         {
             "value": 1,
-            "meaning": "02",
+            "meaning": "huc02northconus",
             "description": "North_Contiguous_US_HUCs",
             "hucs": ["04", "07", "09", "10"],
         },
         {
             "value": 2,
-            "meaning": "03",
+            "meaning": "huc02southconus",
             "description": "South_Contiguous_US_HUCs",
             "hucs": ["08", "11", "12", "13"],
         },
         {
             "value": 3,
-            "meaning": "04",
+            "meaning": "huc02westconus",
             "description": "West_Contiguous_US_HUCs",
             "hucs": ["14", "15", "16", "17", "18"],
         },
@@ -53,7 +56,7 @@ AGGREGATE_GROUPS = {
     "huc02agg01": [
         {
             "value": 0,
-            "meaning": "01",
+            "meaning": "huc02conus",
             "description": "Contiguous_US_HUCs",
             "hucs": [f"{huc:02d}" for huc in range(1, 19)],
         },
@@ -195,7 +198,7 @@ for VAR_ID in VAR_IDS:
         groups = [
             {
                 "value": int(row.source_value),  # type: ignore
-                "meaning": row.HUC2,
+                "meaning": f"huc02region{row.HUC2}",
                 "description": row.NAME.replace(" ", "_"),  # type: ignore
                 "hucs": [row.HUC2],
             }

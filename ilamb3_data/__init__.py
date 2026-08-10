@@ -283,6 +283,27 @@ def download_from_zenodo(record: dict, download_dir: str):
             print(f"File URL not found for file: {file_name}")
 
 
+def download_from_figshare(
+    article_id: str, local_path: Path = Path("_raw")
+) -> list[Path]:
+    """Download the files associated with a figshare article_id."""
+    local_path.mkdir(exist_ok=True, parents=True)
+    response = requests.get(f"https://api.figshare.com/v2/articles/{article_id}/files")
+    response.raise_for_status()
+    files = response.json()
+    out = []
+    for file_meta in files:
+        fname = local_path / file_meta["name"]
+        if not fname.is_file():
+            response = requests.get(file_meta["download_url"], stream=True)
+            response.raise_for_status()
+            with open(fname, "wb") as fd:
+                for chunk in response.iter_content(chunk_size=4096):
+                    fd.write(chunk)
+        out.append(fname)
+    return out
+
+
 def create_output_filename(attrs: dict) -> str:
     """
     Generate a NetCDF filename using required attribute dictionary

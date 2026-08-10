@@ -1,4 +1,5 @@
 import datetime
+import fnmatch
 import json
 import os
 import re
@@ -8,13 +9,14 @@ import warnings
 import zipfile
 from pathlib import Path
 from typing import Optional
-from urllib.parse import unquote, urlparse
+from urllib.parse import unquote, urljoin, urlparse
 
 import cftime as cf
 import numpy as np
 import pandas as pd
 import pooch
 import requests
+import s3fs
 import xarray as xr
 from cf_units import Unit
 from intake_esgf import ESGFCatalog
@@ -38,10 +40,19 @@ def create_registry(registry_file: str) -> pooch.Pooch:
 
 
 def download_from_html(
-    remote_source: str, local_source: Path | str | None = None
-) -> Path:
+    remote_source: str,
+    local_source: Path | str | None = None,
+    *,
+    pattern: str | None = None,
+) -> Path | list[Path]:
     """
-    Download a file from a remote URL to a local path.
+    Download a file, or files matching a wildcard, from a remote URL.
+
+    When ``pattern`` is provided, ``remote_source`` must be an HTML page with
+    links and ``local_source`` is treated as a destination directory. Matching
+    uses shell-style wildcards (for example, ``*.zip``), and a list of
+    downloaded or extracted paths is returned.
+
     If the "content-length" header is missing, it falls back to a simple download.
     If the downloaded file is a .zip, it is extracted into a directory of the same name
     and the extraction directory is returned.
@@ -52,6 +63,41 @@ def download_from_html(
         raise TypeError(
             f"remote_source must be a str, not {type(remote_source).__name__}"
         )
+    if pattern is not None:
+        if not local_source:
+            raise ValueError("local_source must be a directory when pattern is used")
+
+        destination = Path(local_source)
+        destination.mkdir(parents=True, exist_ok=True)
+        page = requests.get(remote_source)
+        page.raise_for_status()
+        from bs4 import BeautifulSoup
+
+        soup = BeautifulSoup(page.text, "html.parser")
+        urls = [
+            urljoin(remote_source, href)
+            for link in soup.find_all("a", href=True)
+            if (href := link.get("href"))
+            and fnmatch.fnmatch(Path(urlparse(href).path).name, pattern)
+        ]
+
+        # Preserve listing order while ignoring duplicate links.
+        urls = list(dict.fromkeys(urls))
+        if not urls:
+            raise FileNotFoundError(
+                f"No files matching {pattern!r} found at {remote_source}"
+            )
+        downloaded_files = []
+        for url in urls:
+            downloaded_file = download_from_html(
+                url,
+                destination / Path(unquote(urlparse(url).path)).name,
+            )
+            if isinstance(downloaded_file, list):
+                raise TypeError("Expected a single downloaded file")
+            downloaded_files.append(downloaded_file)
+        return downloaded_files
+
     if not local_source:
         unquoted_url = unquote(urlparse(remote_source).path)
         filename = Path(unquoted_url).name
@@ -97,6 +143,96 @@ def download_from_html(
             zf.extractall(extract_dir)
         return extract_dir
 
+    return local_source
+
+
+def download_from_s3(
+    remote_source: str,
+    local_source: Path | str,
+    *,
+    pattern: str = "*",
+    anon: bool = True,
+) -> list[Path]:
+    """Download objects matching a wildcard from an S3 bucket or prefix."""
+    if not isinstance(remote_source, str):
+        raise TypeError(
+            f"remote_source must be a str, not {type(remote_source).__name__}"
+        )
+
+    destination = Path(local_source)
+    destination.mkdir(parents=True, exist_ok=True)
+    remote_pattern = f"{remote_source.rstrip('/')}/{pattern}"
+    filesystem = s3fs.S3FileSystem(anon=anon)
+    remote_files = filesystem.glob(remote_pattern)
+    if not remote_files:
+        raise FileNotFoundError(f"No files matching {remote_pattern!r}")
+
+    local_files = []
+    for remote_file in remote_files:
+        local_file = destination / Path(remote_file).name.replace(" ", "_")
+        if not local_file.is_file():
+            filesystem.get(remote_file, str(local_file))
+        local_files.append(local_file)
+    return local_files
+
+
+def download_from_arcgis_rest(
+    remote_source: str,
+    local_source: Path | str,
+    *,
+    where: str | list[str] = "1=1",
+    out_fields: str = "*",
+    out_sr: int = 4326,
+    timeout: int = 180,
+) -> Path:
+    """Query an ArcGIS REST feature layer and save the results as GeoJSON."""
+    if not isinstance(remote_source, str):
+        raise TypeError(
+            f"remote_source must be a str, not {type(remote_source).__name__}"
+        )
+
+    local_source = Path(local_source)
+    if local_source.is_file():
+        return local_source
+
+    queries = [where] if isinstance(where, str) else where
+    if not queries:
+        raise ValueError("where must contain at least one query")
+
+    features = []
+    query_url = f"{remote_source.rstrip('/')}/query"
+    for query in queries:
+        response = requests.get(
+            query_url,
+            params={
+                "where": query,
+                "outFields": out_fields,
+                "returnGeometry": "true",
+                "outSR": out_sr,
+                "f": "geojson",
+            },
+            timeout=timeout,
+        )
+        response.raise_for_status()
+        result = response.json()
+        if "error" in result:
+            error = result["error"]
+            message = error.get("message", "Unknown ArcGIS REST error")
+            details = "; ".join(error.get("details", []))
+            if details:
+                message = f"{message}: {details}"
+            raise RuntimeError(message)
+        if result.get("type") != "FeatureCollection" or not isinstance(
+            result.get("features"), list
+        ):
+            raise ValueError("ArcGIS REST response is not a GeoJSON FeatureCollection")
+        features.extend(result["features"])
+
+    local_source.parent.mkdir(parents=True, exist_ok=True)
+    local_source.write_text(
+        json.dumps({"type": "FeatureCollection", "features": features}),
+        encoding="utf-8",
+    )
     return local_source
 
 
@@ -328,7 +464,7 @@ def build_time(
     sdate: cf.datetime,
     edate: cf.datetime,
     freq: str,
-    ref_date: Optional[cf.datetime] = None,
+    ref_date: cf.datetime | None = None,
     climatology: bool = False,
 ) -> xr.DataArray:
     """
@@ -463,13 +599,13 @@ def cf_to_num(
 def set_time_attrs(
     ds: xr.Dataset,
     bounds_frequency: str,
-    ref_date: Optional[cf.datetime] = None,
+    ref_date: cf.datetime | None = None,
     create_new_time: bool = False,
-    sdate: Optional[cf.datetime] = None,
-    edate: Optional[cf.datetime] = None,
+    sdate: cf.datetime | None = None,
+    edate: cf.datetime | None = None,
     climatology: bool = False,
-    clim_sdate: Optional[cf.datetime] = None,
-    clim_edate: Optional[cf.datetime] = None,
+    clim_sdate: cf.datetime | None = None,
+    clim_edate: cf.datetime | None = None,
 ) -> xr.Dataset:
     """
     See docstring in your version; adds support for bounds_frequency='fx':
@@ -832,7 +968,7 @@ def set_var_attrs(
     flag_meanings: list[str] | None = None,
     extra_attrs: dict | None = None,
     target_dtype: str | np.dtype | None = None,
-    nodata_value: int | float | None = None,
+    nodata_value: float | None = None,
     convert: bool = False,
     compression: dict | None = None,
     overwrite: bool = False,
@@ -1154,18 +1290,18 @@ def set_ods26_global_attrs(
     *,
     activity_id: str = "obs4MIPs",
     aux_uncertainty_id: str = "N/A",
-    comment: Optional[str] = None,
+    comment: str | None = None,
     contact: str = "N/A",  # First Last (email)
     Conventions: str = "CF-1.12 ODS-2.6",
     creation_date: str = "N/A",
-    dataset_contributor: Optional[str] = None,
+    dataset_contributor: str | None = None,
     data_specs_version: str = "2.6",
-    doi: Optional[str] = None,
+    doi: str | None = None,
     frequency: str = "N/A",
     grid: str = "N/A",
     grid_label: str = "N/A",
     has_aux_unc: str = "FALSE",  # must be TRUE or FALSE
-    history: Optional[str] = None,
+    history: str | None = None,
     institution: str = "N/A",
     institution_id: str = "N/A",
     license: str = "N/A",
@@ -1178,19 +1314,19 @@ def set_ods26_global_attrs(
     site_id: str = "N/A",
     site_location: str = "N/A",
     source: str = "N/A",
-    source_data_retrieval_date: Optional[str] = None,
+    source_data_retrieval_date: str | None = None,
     source_data_url: str = "N/A",
     source_id: str = "N/A",
     source_label: str = "N/A",
     source_type: str = "N/A",
     source_version_number: str = "N/A",
     table_id: str = "N/A",
-    title: Optional[str] = None,
+    title: str | None = None,
     tracking_id: str = "N/A",
     variable_id: str = "N/A",
     variant_label: str = "N/A",
-    variant_info: Optional[str] = None,
-    version: Optional[str] = None,
+    variant_info: str | None = None,
+    version: str | None = None,
 ) -> xr.Dataset:
     """
     Set required NetCDF global attributes according to CF-Conventions 1.12 and ODS-2.6.
@@ -1351,6 +1487,127 @@ def set_ods26_global_attrs(
             continue
 
     # set global attributes
+    ds.attrs = attrs
+    return ds
+
+
+def set_regions_global_attrs(
+    ds: xr.Dataset,
+    creation_date: str,
+    dataset_contributor: str,
+    frequency: str,
+    grid: str,
+    grid_label: str,
+    history: str,
+    institution: str,
+    institution_id: str,
+    license: str,
+    nominal_resolution: str,
+    references: str,
+    region: str,
+    source: str,
+    source_data_retrieval_date: str,
+    source_id: str,
+    title: str,
+    variable_id: str,
+    version: str,
+    *,
+    activity_id: str = "ILAMB",
+    comment: str | None = None,
+    conventions: str = "CF-1.12",
+    contact: str | None = None,
+    processing_code_location: str | None = None,
+    source_data_url: str | None = None,
+    source_version_number: str | None = None,
+    tracking_id: str | None = None,
+    variant_label: str | None = None,
+) -> xr.Dataset:
+    """
+    Set NetCDF global attributes according to a hybrid of CF-Conventions 1.12. This also
+    blends some useful elements from ODS-2.6 standards and adds some additional custom
+    attributes specific to the ILAMB project.
+
+    This function validates that all required attributes are provided and assigns them
+    to the global attributes of the input xarray dataset. Optional fields may be set to
+    None.
+
+    Args:
+        ds (xr.Dataset): The xarray dataset to which global attributes will be added.
+        activity_id (str): An ID assigned to the activity dictating the creation of the
+            dataset.
+        comment (str): Any comments related to the dataset.
+        contact (str): The First, Last name and (email) of the person or organization
+            that generated the dataset.
+        conventions (str): The conventions & versions that the NetCDF are aligned to.
+        creation_date (str): The date when the dataset was created.
+        dataset_contributor (str): The name of the person or organization that prepared
+            the NetCDF.
+        frequency (str): The temporal frequency of the dataset.
+        grid (str): A description of the spatial grid of the dataset, including any
+            transformations.
+        grid_label (str): A label identifying the grid used in the dataset.
+        history (str): A record of the NetCDF processing history.
+        institution (str): The name of the institution responsible for generating the
+            original dataset.
+        institution_id (str): The identifier of the institution responsible for
+            generating the original dataset.
+        license (str): The license under which the dataset is distributed.
+        nominal_resolution (str): The nominal spatial resolution of the dataset.
+        processing_code_location (str): The URL or path to the code used for processing
+            the dataset.
+        references (str): References or citations related to the dataset.
+        region (str): The geographical region covered by the dataset.
+        source (str): A description of how the dataset was generated.
+        source_data_retrieval_date (str): The date when the source data was downloaded.
+        source_data_url (str): The URL from which the source data was obtained.
+        source_id (str): The identifier of the source dataset, e.g., GFED-1-0.
+        source_version_number (str): The version number of the source dataset.
+        title (str): The title of the dataset, usually what is displayed on plots.
+        tracking_id (str): A unique identifier for this NetCDF.
+        variable_id (str): The identifier of the variable within the NetCDF.
+        variant_label (str): The label identifying the variant of the dataset, usually
+            named after the project or organization generating the dataset.
+        version (str): The version of the NetCDF produced.
+
+    Returns:
+        xr.Dataset: The dataset with updated global attributes.
+
+    Raises:
+        ValueError: If any required attribute is missing or not valid.
+    """
+
+    # Fill in global attributes
+    attrs = {
+        "activity_id": activity_id,
+        "comment": comment,
+        "contact": contact,
+        "Conventions": conventions,
+        "creation_date": creation_date,
+        "dataset_contributor": dataset_contributor,
+        "frequency": frequency,
+        "grid": grid,
+        "grid_label": grid_label,
+        "history": history,
+        "institution": institution,
+        "institution_id": institution_id,
+        "license": license,
+        "nominal_resolution": nominal_resolution,
+        "processing_code_location": processing_code_location,
+        "references": references,
+        "region": region,
+        "source": source,
+        "source_data_retrieval_date": source_data_retrieval_date,
+        "source_data_url": source_data_url,
+        "source_id": source_id,
+        "source_version_number": source_version_number,
+        "title": title,
+        "tracking_id": tracking_id,
+        "variable_id": variable_id,
+        "variant_label": variant_label,
+        "version": version,
+    }
+
+    # Set the attrs
     ds.attrs = attrs
     return ds
 

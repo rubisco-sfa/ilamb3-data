@@ -67,6 +67,9 @@ AGGREGATE_GROUPS = {
     ],
 }
 
+########################################################################################
+# Create function that parses the legend file included in the Figshare download
+
 
 def parse_legend(legend_filename: Path) -> tuple[list[int], list[str], list[str]]:
     values = []
@@ -84,7 +87,7 @@ def parse_legend(legend_filename: Path) -> tuple[list[int], list[str], list[str]
 
 
 ########################################################################################
-# Create function that aggregates source HUC2 raster values into larger regions
+# Create function that aggregates source class values into larger regions
 
 
 def aggregate_regions(
@@ -92,7 +95,7 @@ def aggregate_regions(
     class_to_source_value: dict[str, int],
     groups: list[dict],
 ) -> xr.DataArray:
-    """Remap source HUC2 raster values to a smaller set of aggregate values."""
+    """Remap source Koppen class values to a smaller set of aggregate values."""
     aggregate_ids = xr.full_like(source_ids, fill_value=-1, dtype=np.int8)
     for group in groups:
         missing_classes = set(group["classes"]) - class_to_source_value.keys()
@@ -101,18 +104,13 @@ def aggregate_regions(
                 f"Aggregate {group['meaning']} contains unavailable class codes: "
                 f"{sorted(missing_classes)}"
             )
-        source_values = [class_to_source_value[huc] for huc in group["classes"]]
+        source_values = [class_to_source_value[cl] for cl in group["classes"]]
         aggregate_ids = xr.where(
             source_ids.isin(source_values),
             np.int8(group["value"]),
             aggregate_ids,
         )
     return aggregate_ids
-
-
-# "https://www.gloh2o.org/koppen/"
-
-#
 
 
 ########################################################################################
@@ -135,6 +133,8 @@ download_date = datetime.fromtimestamp(local_source.stat().st_mtime).strftime(
     "%Y-%m-%d"
 )
 
+########################################################################################
+# Load / transform data and parse the legend
 
 ds = (
     xr.open_dataset(local_source)
@@ -231,7 +231,7 @@ for VAR_ID in VAR_IDS:
         license="CC BY 4.0",
         nominal_resolution="0.5 degree",
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/tree/main/data/GloH2O/convert.py",
-        references=" Beck, H.E., T.R. McVicar, N. Vergopolan, A. Berg, N.J. Lutsko, A. Dufour, Z. Zeng, X. Jiang, A.I.J.M. van Dijk, D.G. Miralles. High-resolution (1 km) Köppen-Geiger maps for 1901–2099 based on constrained CMIP6 projections, Scientific Data 10, 724, doi:10.1038/s41597-023–02549‑6 (2023).",
+        references="Beck, H.E., T.R. McVicar, N. Vergopolan, A. Berg, N.J. Lutsko, A. Dufour, Z. Zeng, X. Jiang, A.I.J.M. van Dijk, D.G. Miralles. High-resolution (1 km) Köppen-Geiger maps for 1901–2099 based on constrained CMIP6 projections, Scientific Data 10, 724, doi:10.1038/s41597-023–02549‑6 (2023).",
         region="glb",
         source="High-resolution, observation-based climatologies",
         source_data_retrieval_date=download_date,

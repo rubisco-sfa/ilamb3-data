@@ -154,11 +154,11 @@ class_to_source_value = dict(zip(region_labels, region_values, strict=True))
 attrs = {
     "koppen": {
         "standard_name": "koppen_classes",
-        "long_name": "Koppen Climate Classes",
+        "long_name": "Koppen-Geiger Classifications",
     },
     "koppenagg5": {
         "standard_name": "koppen_classes_level1_aggregate",
-        "long_name": "Koppen Climate Classes Aggregated by Level 1 Label",
+        "long_name": "Koppen-Geiger Classifications Aggregated by Level 1 Label",
     },
 }
 
@@ -175,12 +175,12 @@ for VAR_ID in VAR_IDS:
             for value, label, name in zip(region_values, region_labels, region_names)
         ]
         region_ids = source_ids.copy()
-        processing_description = "retained the 30 Koppen classes"
+        processing_description = "retained the 30 Koppen-Geiger Classifications"
     else:
         groups = AGGREGATE_GROUPS[VAR_ID]
         region_ids = aggregate_regions(source_ids, class_to_source_value, groups)
         processing_description = (
-            "merged the 30 Koppen classes into aggregate unit(s): "
+            "merged the 30 Koppen-Geiger Classifications into aggregate unit(s): "
             + ", ".join(
                 f"{group['description']}: [{', '.join(group['classes'])}]"
                 for group in groups
@@ -232,8 +232,8 @@ for VAR_ID in VAR_IDS:
         nominal_resolution="0.5 degree",
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/tree/main/data/GloH2O/convert.py",
         references="Beck, H.E., T.R. McVicar, N. Vergopolan, A. Berg, N.J. Lutsko, A. Dufour, Z. Zeng, X. Jiang, A.I.J.M. van Dijk, D.G. Miralles. High-resolution (1 km) Köppen-Geiger maps for 1901–2099 based on constrained CMIP6 projections, Scientific Data 10, 724, doi:10.1038/s41597-023–02549‑6 (2023).",
-        region="glb",
-        source="High-resolution, observation-based climatologies",
+        region="global",
+        source="Koppen-Geiger Classifications estimated using CHELSA V1.2, CHPclim V1, WorldClim V1, WorldClim V2, CRU TS V4.01, and GPCC FDR V7 gridded climatology products.",
         source_data_retrieval_date=download_date,
         source_data_url=remote_source,
         source_id="Koppen-v1",

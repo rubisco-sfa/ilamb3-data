@@ -17,8 +17,7 @@ Single file `CARDAMOM_satellite_constrained_terrestrial_biosphere_reanalysis.nc4
 4° lat × 5° lon global grid (lat 35, lon 72; 835 land cells), monthly Jan-2001 –
 Dec-2021 (252 steps), fill value `-9999`. Most quantities are provided as four
 ensemble statistics (`_median`, `_mean`, `_25th`, `_75th`); the conversion extracts
-the **median** member (auto-detected, so it is robust to the exact suffix) and
-carries the 25th/75th as CF uncertainty bounds.
+the **median** member and carries the 25th/75th percentiles as ancillary variables.
 
 The underlying model is DALEC-CWE: seven carbon pools, three soil water pools,
 three linked energy states, and a snow water equivalent pool. Parameters *and
@@ -142,24 +141,24 @@ fixed physical bound with a documented reason (cf. `GIMMS_LAI4g`, `NCSCD`,
 ## Uncertainty
 
 The source advertises `has_aux_unc = TRUE` with `aux_uncertainty_id = "_25th, _75th"`.
-Those quartiles are written as `<var>_bnds` and referenced by the `bounds`
-attribute, which is how ILAMB reads observational uncertainty
-(`ConfUncertainty`, following `DaviesBarnard`).
+Those quartiles are written as `<var>_p25` and `<var>_p75` and referenced by the
+main variable's `ancillary_variables` attribute.
 
 Bounds are provided **only for the 14 variables that derive from a single source
 term**. Percentiles are not additive, so the 25th percentile of
 `C_fol + C_lab + C_roo + C_woo` is not the 25th percentile of `cVeg`; emitting one
 would misstate the ensemble spread. The six derived sums — `reco`, `npp`, `cVeg`,
-`cLitter`, `mrso`, `tws` — therefore carry no bounds. For `nbp` and `nee`, which
+`cLitter`, `mrso`, `tws` — therefore carry no ancillary percentiles. For `nbp`
+and `nee`, which
 are negated source terms, the quartiles are swapped, since negating a distribution
 exchanges its lower and upper quartiles.
 
-**The bounds are not quality-controlled.** `QC_BOUNDS` is evaluated on the median
+**The percentiles are not quality-controlled.** `QC_BOUNDS` is evaluated on the median
 member only, so at retained cells the published interquartile range can exceed
-those ceilings — the `rh` upper bound reaches 73.7 gC m⁻² d⁻¹ (against a 20 bound)
+those ceilings — `rh_p75` reaches 73.7 gC m⁻² d⁻¹ (against a 20 bound)
 in 5 cell-months, `cSoil` reaches 115.5 kg m⁻² (against 100), and `snw` reaches
 4064 kg m⁻² (against 3000). This is the raw posterior spread and is left
-unfiltered deliberately, but it means the bounds should not be read as
+unfiltered deliberately, but it means the percentile fields should not be read as
 physically-screened envelopes. Whether cells should instead be masked when their
 *quartiles* breach is an open question for the data producers.
 
@@ -198,15 +197,15 @@ Consequences:
   desert readings are instantaneous midday skin values and are not comparable.
 
 ## Formatting choices
-- CF-1.11, `noleap` calendar, `days since 1850-01-01` with `time_bnds`, plus
-  `lat_bnds`/`lon_bnds`. Axis bounds are written as coordinate variables so that
-  the only data variables are the measurement and its uncertainty.
+- CF-1.12, Gregorian calendar, `days since 1850-01-01` with `time_bnds`, plus
+  `lat_bnds`/`lon_bnds`. Axis bounds are written as coordinate variables; uncertainty
+  is stored in separate `<var>_p25` and `<var>_p75` ancillary data variables.
 - **Native 4×5° grid retained** — the source is coarser than 0.5°, so upsampling
   would fabricate resolution; ILAMB regrids at comparison time.
 - Fluxes converted g m⁻² d⁻¹ → kg m⁻² s⁻¹; pools g m⁻² → kg m⁻².
-- `_FillValue` is retained on every data variable: ILAMB 2.7 masks on
-  `_FillValue`/`missing_value` and has no NaN code path, so a bare NaN would not
-  be masked.
+- The source `_FillValue` of `-9999` is decoded to NaN before processing. Each
+  output variable uses the default fill value selected by `set_var_attrs` for its
+  target dtype (`1e20` for `float32`).
 - Quantities that are physically non-negative are clipped at zero **on read**,
   which removes the small number of negatives the source carries in
   positive-definite fields (`gpp` has 15: eleven at roundoff ~1×10⁻¹⁷, four
@@ -216,7 +215,8 @@ Consequences:
 
 ## Variable mapping (CARDAMOM → ILAMB/MIP)
 
-`unc` marks variables carrying `<var>_bnds` uncertainty; `QC` gives the mask domain.
+`unc` marks variables carrying `<var>_p25` and `<var>_p75` ancillary uncertainty;
+`QC` gives the mask domain.
 
 | ILAMB | CARDAMOM source | unc | QC | notes |
 |-------|-----------------|-----|----|-------|
@@ -225,8 +225,8 @@ Consequences:
 | rh    | `rh_co2` | ✓ | carbon | CO₂ heterotrophic respiration |
 | reco  | `resp_auto + rh_co2` | | carbon | |
 | npp   | `gpp − resp_auto` | | carbon | |
-| nbp   | `−NBE` | ✓ | carbon | sign: land C uptake positive; bounds swapped |
-| nee   | `−NEP` | ✓ | carbon | bounds swapped |
+| nbp   | `−NBE` | ✓ | carbon | sign: land C uptake positive; percentiles swapped |
+| nee   | `−NEP` | ✓ | carbon | percentiles swapped |
 | fFire | `f_total` | ✓ | carbon | |
 | cVeg  | `C_fol + C_lab + C_roo + C_woo` | | carbon | living biomass |
 | cSoil | `C_som` | ✓ | carbon | |

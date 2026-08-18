@@ -332,11 +332,29 @@ def create_output_filename(attrs: dict) -> str:
     return filename
 
 
-def get_cmip6_variable_info(
-    search_key: str, variable_id: str | None = None
-) -> dict[str, str]:
+def get_cmip6_variable_info(search_key: str, variable_id: str | None = None) -> dict:
     """
-    Given a CMIP6 variable_id, return a dictionary of its standard_name, long_name, and units.
+    Find CMIP6 variable information using the intake-esgf catalog.
+
+    Parameters
+    ----------
+    search_key : str
+        The search key for the CMIP6 variable. Could be a phrase or best guess at a
+        variable ID.
+    variable_id : str, optional
+        The variable ID to select from the returned CMIP6 variable info query results.
+
+    Returns
+    -------
+    dict
+        A dictionary containing "cf_standard_name", "variable_long_name", and
+        "variable_units".
+
+    Note
+    ----
+    This needs to be able to return a df with keys or a dictionary depending on if the
+    variable_id is provided. Not providing variable_id shouldn't cause the fun to fail,
+    but I haven't implemented this yet.
     """
     df = ESGFCatalog().variable_info(search_key)
     if variable_id:
@@ -347,7 +365,11 @@ def get_cmip6_variable_info(
             )
         return df.loc[variable_id].to_dict()
     else:
-        raise ValueError("variable_id must be provided to get specific variable info.")
+        raise ValueError(
+            "variable_id must be provided to get a dict for your search key. If you "
+            "just want to see query results, run "
+            "intake-esgf.ESGFCatalog().variable_info(<search_key>) instead."
+        )
 
 
 def time_bounds_from_frequency(
@@ -377,7 +399,8 @@ def time_bounds_from_frequency(
 
     # Validate/normalize frequency
     try:
-        offset = pd.tseries.frequencies.to_offset(freq)
+        # Datetime offsets call month-end "ME" while PeriodIndex still uses "M".
+        offset = pd.tseries.frequencies.to_offset("ME" if freq == "M" else freq)
     except ValueError as e:
         raise ValueError(f"Invalid freq {freq!r}: {e}") from e
     if offset is None:
@@ -431,7 +454,7 @@ def climatology_bounds_from_frequency(
     s_ts, e_ts = to_ts(sdate), to_ts(edate)
 
     try:
-        _ = pd.tseries.frequencies.to_offset(freq)
+        _ = pd.tseries.frequencies.to_offset("ME" if freq == "M" else freq)
     except ValueError as e:
         raise ValueError(f"Invalid freq {freq!r}: {e}") from e
 
@@ -629,9 +652,33 @@ def set_time_attrs(
     clim_edate: cf.datetime | None = None,
 ) -> xr.Dataset:
     """
-    See docstring in your version; adds support for bounds_frequency='fx':
-    - time = midpoint(sdate, edate)
-    - bounds = [[sdate, edate]]
+    Set time-related attributes for an xarray Dataset, including time bounds.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        The dataset to modify.
+    bounds_frequency : str
+        Frequency of the time bounds (e.g., "M" for monthly, "fx" for fixed).
+    ref_date : cf.datetime | None, optional
+        Reference date for CF time conversion. If None, the first time value in the dataset is used.
+    create_new_time : bool, default False
+        Whether to create a new time coordinate from scratch.
+    sdate : cf.datetime | None, optional
+        Start date for creating new time coordinate.
+    edate : cf.datetime | None, optional
+        End date for creating new time coordinate.
+    climatology : bool, default False
+        Whether to set climatology bounds.
+    clim_sdate : cf.datetime | None, optional
+        Start date for climatology bounds.
+    clim_edate : cf.datetime | None, optional
+        End date for climatology bounds.
+
+    Returns
+    -------
+    xr.Dataset
+        The dataset with updated time attributes.
     """
     if bounds_frequency is None:
         raise ValueError("bounds_frequency must be provided.")
@@ -901,11 +948,50 @@ def _sanitize_units(u: str) -> str:
     return u.replace("^", "")
 
 
-def _validate_standard_name(name: str) -> None:
-    if " " in name:
-        raise ValueError(f"standard_name '{name}' contains spaces; use underscores.")
+_STANDARD_NAME_MODIFIERS = {
+    "detection_minimum",
+    "number_of_observations",
+    "standard_error",
+    "status_flag",
+}
+_ANCILLARY_STANDARD_NAME_MODIFIERS = {"25th_percentile", "75th_percentile"}
+
+
+def _validate_standard_name(ds: xr.Dataset, var: str, name: str) -> None:
+    """Validate a standard name and any context-specific modifier."""
     if name != name.lower():
         raise ValueError(f"standard_name '{name}' must be lowercase.")
+
+    parts = name.split()
+    if len(parts) <= 1:
+        return
+    if len(parts) > 2:
+        raise ValueError(f"standard_name '{name}' has more than one modifier.")
+
+    base_name, modifier = parts
+    if modifier in _STANDARD_NAME_MODIFIERS:
+        return
+
+    parents = [
+        parent
+        for parent in ds.data_vars
+        if var in ds[parent].attrs.get("ancillary_variables", "").split()
+    ]
+    if modifier in _ANCILLARY_STANDARD_NAME_MODIFIERS and parents:
+        parent_names = {ds[parent].attrs.get("standard_name") for parent in parents}
+        if base_name not in parent_names:
+            raise ValueError(
+                f"ancillary variable '{var}' has base standard_name '{base_name}', "
+                f"which does not match its parent variable."
+            )
+        return
+
+    allowed = ", ".join(sorted(_STANDARD_NAME_MODIFIERS))
+    raise ValueError(
+        f"standard_name '{name}' has an invalid modifier. Expected one of: "
+        f"{allowed}; percentile modifiers are allowed only on variables referenced "
+        "by ancillary_variables."
+    )
 
 
 def _validate_ancillary_variables(ds: xr.Dataset, ancillary_variables: str) -> None:
@@ -1102,7 +1188,7 @@ def set_var_attrs(
             effective_units = current_units
 
     # do some cleaning/validation
-    _validate_standard_name(standard_name)
+    _validate_standard_name(ds, var, standard_name)
     clean_long_name = re.sub(r"\s*\[[^\]]+\]", "", long_name).strip()
     if not clean_long_name:
         raise ValueError("long_name cannot be empty.")

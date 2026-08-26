@@ -7,19 +7,7 @@ import numpy as np
 import xarray as xr
 import yaml
 
-from ilamb3_data import (
-    create_output_filename,
-    gen_trackingid,
-    gen_utc_timestamp,
-    get_cmip6_variable_info,
-    set_coord_bounds,
-    set_lat_attrs,
-    set_lon_attrs,
-    set_ods26_global_attrs,
-    set_time_attrs,
-    set_var_attrs,
-    standardize_dim_order,
-)
+import ilamb3_data as ild
 
 FILENAME = pathlib.Path(__file__).name
 PARENTNAME = pathlib.Path(__file__).parent.name
@@ -49,10 +37,10 @@ else:
     file_range = f"{files[0].name}"
 
 # Set timestamps and tracking id
-download_stamp = gen_utc_timestamp(files[0].stat().st_mtime)
-creation_stamp = gen_utc_timestamp()
+download_stamp = ild.output.utc_timestamp(files[0].stat().st_mtime)
+creation_stamp = ild.output.utc_timestamp()
 today_stamp = datetime.now().strftime("%Y%m%d")
-tracking_id = gen_trackingid()
+tracking_id = ild.output.new_tracking_id()
 
 # Open and rename vars
 time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
@@ -80,8 +68,8 @@ ds = ds[vars]
 
 # Get variable attribute info via ESGF CMIP variable information
 for var in vars:
-    var_info = get_cmip6_variable_info(var, variable_id=var)
-    ds = set_var_attrs(
+    var_info = ild.variable.lookup_cmip6(var, variable_id=var)
+    ds = ild.variable.standardize(
         ds,
         var,
         units=ds[var].attrs["units"],
@@ -95,12 +83,12 @@ for var in vars:
         ds[var].attrs.pop(attr, None)
 
 # Clean up attrs
-ds = set_time_attrs(ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(1900, 1, 1))
-ds = set_lat_attrs(ds)
-ds = set_lon_attrs(ds)
-ds = set_coord_bounds(ds, "lat")
-ds = set_coord_bounds(ds, "lon")
-ds = standardize_dim_order(ds)
+ds = ild.time.standardize(ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(1900, 1, 1))
+ds = ild.lat.standardize(ds)
+ds = ild.lon.standardize(ds)
+ds = ild.bounds.build_from_centers(ds, "lat")
+ds = ild.bounds.build_from_centers(ds, "lon")
+ds = ild.output.order_dimensions(ds)
 
 # read-in yaml
 
@@ -139,9 +127,9 @@ for var in vars:
         for section in global_attrs.values()
         for key, value in section.items()
     }
-    out_ds = set_ods26_global_attrs(var_ds, **flat_global_attrs)
+    out_ds = ild.global_attrs.set_ods26(var_ds, **flat_global_attrs)
 
     # Prep for export
-    out_path = create_output_filename(out_ds.attrs)
+    out_path = ild.output.filename_from_attrs(out_ds.attrs)
 
     out_ds.to_netcdf(out_path, format="NETCDF4")

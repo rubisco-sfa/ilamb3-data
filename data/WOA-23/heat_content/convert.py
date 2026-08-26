@@ -7,19 +7,6 @@ import pandas as pd
 import xarray as xr
 
 import ilamb3_data as ild
-from ilamb3_data import (
-    create_output_filename,
-    gen_trackingid,
-    gen_utc_timestamp,
-    set_coord_bounds,
-    set_depth_attrs,
-    set_lat_attrs,
-    set_lon_attrs,
-    set_ods26_global_attrs,
-    set_time_attrs,
-    set_var_attrs,
-    standardize_dim_order,
-)
 
 # Download source
 remote_source = "https://www.ncei.noaa.gov/data/oceans/woa/DATA_ANALYSIS/3M_HEAT_CONTENT/NETCDF/heat_content/heat_content_anomaly_0-2000_yearly.nc"  # Redirected from: https://www.ncei.noaa.gov/access/global-ocean-heat-content/heat_global.html
@@ -30,10 +17,10 @@ if not source.is_file():
     ild.download.from_html(remote_source, source)
 
 # Set timestamps and tracking id
-download_stamp = gen_utc_timestamp(source.stat().st_mtime)
-creation_stamp = gen_utc_timestamp()
+download_stamp = ild.output.utc_timestamp(source.stat().st_mtime)
+creation_stamp = ild.output.utc_timestamp()
 today_stamp = datetime.now().strftime("%Y%m%d")
-tracking_id = gen_trackingid()
+tracking_id = ild.output.new_tracking_id()
 
 # Load the dataset for adjustments
 ds = xr.open_dataset(source, decode_times=False, engine="netcdf4")
@@ -79,7 +66,7 @@ ds["ohc_stderr"] = ds["yearl_h22_se_WO"].rename("ohc_stderr")
 ds["ohc_stderr"] = (ds["ohc_stderr"] * 10).astype(np.float64)
 
 # Set ohc variable attrs
-ds = set_var_attrs(
+ds = ild.variable.standardize(
     ds,
     "ohc",
     units="ZJ",
@@ -126,7 +113,7 @@ ohcJm2 = (hc_J / area_4d).astype("float32")
 ds["ohcJm2"] = ohcJm2
 
 # Set ohc_Jm2 variable attrs
-ds = set_var_attrs(
+ds = ild.variable.standardize(
     ds,
     "ohcJm2",
     units="J m-2",
@@ -139,18 +126,18 @@ ds = set_var_attrs(
 )
 
 # Clean up attrs
-ds = set_time_attrs(ds, bounds_frequency="Y")
-ds = set_lat_attrs(ds)
-ds = set_lon_attrs(ds)
-ds = set_depth_attrs(
+ds = ild.time.standardize(ds, bounds_frequency="Y")
+ds = ild.lat.standardize(ds)
+ds = ild.lon.standardize(ds)
+ds = ild.depth.build_from_bounds(
     ds,
     bounds=np.array([[0, 2000]]),
     units="meters",
     positive="down",
     long_name="depth of sea water",
 )
-ds = set_coord_bounds(ds, "lat")
-ds = set_coord_bounds(ds, "lon")
+ds = ild.bounds.build_from_centers(ds, "lat")
+ds = ild.bounds.build_from_centers(ds, "lon")
 
 # global temporal mean of ohcJm2
 anomaly_per_cell = ohcJm2 * cell_area  # per-cell anomaly
@@ -180,7 +167,7 @@ for var in ["ohcJm2", "ohc"]:
     # define output datasets
     if var == "ohcJm2":
         out_ds = ds[base_vars + [var]]
-        out_ds = standardize_dim_order(out_ds)
+        out_ds = ild.output.order_dimensions(out_ds)
         out_ds["time"].encoding = {"_FillValue": None}
     else:
         out_ds = ds[base_vars + [var, "ohc_stderr"]]
@@ -195,7 +182,7 @@ for var in ["ohcJm2", "ohc"]:
         )
         # so I have to set them again
         out_ds["depth"].attrs, out_ds["depth"].encoding = orig_attrs, orig_encoding
-        out_ds = standardize_dim_order(out_ds)
+        out_ds = ild.output.order_dimensions(out_ds)
         out_ds["time"].encoding = {"_FillValue": None}
 
     # Define varibable-dependant attributes
@@ -211,7 +198,7 @@ for var in ["ohcJm2", "ohc"]:
     }
 
     # Set global attributes
-    out_ds = set_ods26_global_attrs(
+    out_ds = ild.global_attrs.set_ods26(
         out_ds,
         aux_uncertainty_id=dynamic_attrs["aux_uncertainty_id"],
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
@@ -250,5 +237,5 @@ for var in ["ohcJm2", "ohc"]:
     )
 
     # Prep for export
-    out_path = create_output_filename(out_ds.attrs)
+    out_path = ild.output.filename_from_attrs(out_ds.attrs)
     out_ds.to_netcdf(out_path, format="NETCDF4")

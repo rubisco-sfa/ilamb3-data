@@ -251,7 +251,7 @@ def add_variable_metadata() -> None:
     for name, spec in VARDEFS.items():
         if "units" in spec:
             continue
-        info = ild.get_cmip6_variable_info(name, variable_id=name)
+        info = ild.variable.lookup_cmip6(name, variable_id=name)
         spec.update(
             units=info["variable_units"],
             long_name=info["variable_long_name"],
@@ -303,8 +303,8 @@ def main(source: str = SOURCE_FILE):
         source_path = Path(earthaccess.download(granules, "_raw")[0])
 
     # Generate timestamps for download and creation times
-    download_stamp = ild.gen_utc_timestamp(source_path.stat().st_mtime)
-    creation_stamp = ild.gen_utc_timestamp()
+    download_stamp = ild.output.utc_timestamp(source_path.stat().st_mtime)
+    creation_stamp = ild.output.utc_timestamp()
 
     # Open the dataset with CFDatetimeCoder to handle time decoding correctly
     time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
@@ -351,7 +351,7 @@ def main(source: str = SOURCE_FILE):
         # --- main variable attributes -------------------------------------------------
 
         # Set the main variable attributes
-        out = ild.set_var_attrs(
+        out = ild.variable.standardize(
             out,
             varname,
             units=spec["units"],
@@ -371,7 +371,6 @@ def main(source: str = SOURCE_FILE):
         # --- ancillary variable attributes --------------------------------------------
 
         # Set ancillary attributes after the main variable attrs are set
-        # This lets set_var_attrs validate percentile modifiers in context
         if has_percentiles:
             for percentile in (25, 75):
                 ancillary = f"{varname}_p{percentile}"
@@ -380,7 +379,7 @@ def main(source: str = SOURCE_FILE):
                     if spec["standard_name"]
                     else ""
                 )
-                out = ild.set_var_attrs(
+                out = ild.variable.standardize(
                     out,
                     ancillary,
                     units=spec["units"],
@@ -397,20 +396,20 @@ def main(source: str = SOURCE_FILE):
                     out[ancillary].attrs.pop("standard_name")
 
         # Use built-in ILAMB funcs to build dimensions/attributes
-        out = ild.set_time_attrs(
+        out = ild.time.standardize(
             out,
             bounds_frequency="M",
             ref_date=cf.DatetimeProlepticGregorian(1850, 1, 1),
         )
-        out = ild.set_lat_attrs(out)
-        out = ild.set_lon_attrs(out)
-        out = ild.set_coord_bounds(out, "lat")
-        out = ild.set_coord_bounds(out, "lon")
-        out = ild.standardize_dim_order(out)
+        out = ild.lat.standardize(out)
+        out = ild.lon.standardize(out)
+        out = ild.bounds.build_from_centers(out, "lat")
+        out = ild.bounds.build_from_centers(out, "lon")
+        out = ild.output.order_dimensions(out)
 
         # --- set NetCDF global attributes ---------------------------------------------
 
-        out = ild.set_ods26_global_attrs(
+        out = ild.global_attrs.set_ods26(
             out,
             activity_id="ILAMB",
             aux_uncertainty_id=f"{varname}_p25 {varname}_p75",
@@ -452,13 +451,13 @@ def main(source: str = SOURCE_FILE):
             source_type="reanalysis",
             source_version_number="v1100.1",
             title=f"CARDAMOM Carbon-Water-Energy Reanalysis v1100.1, 2001-2021: {varname}",
-            tracking_id=ild.gen_trackingid(),
+            tracking_id=ild.output.new_tracking_id(),
             variable_id=varname,
             version=f"v{time.strftime('%Y%m%d')}",
         )
 
         # Export
-        filename = ild.create_output_filename(out.attrs)
+        filename = ild.output.filename_from_attrs(out.attrs)
         out.to_netcdf(filename)
 
 

@@ -26,7 +26,7 @@ if not RAW_PATH.is_dir():
 remote_source = "https://data.mendeley.com/public-files/datasets/c4xj5rv6kv/files/5223c414-234a-498c-ae08-3100cb38510f/file_downloaded"
 local_source = RAW_PATH / "Raster CAVM GIS data.zip"
 local_source = ild.download.from_html(remote_source, local_source)
-download_stamp = ild.gen_utc_timestamp(local_source.stat().st_mtime)
+download_stamp = ild.output.utc_timestamp(local_source.stat().st_mtime)
 
 # --------------------------------------------------------------------------------------
 # 2) Read Data
@@ -115,14 +115,14 @@ df = df[df["Raster code"].isin(raster_codes)].copy()
 # --------------------------------------------------------------------------------------
 
 # Set lat/lon/var attributes
-ds = ild.set_lat_attrs(ds)
-ds = ild.set_lon_attrs(ds)
-ds = ild.set_coord_bounds(ds, "lat")
-ds = ild.set_coord_bounds(ds, "lon")
+ds = ild.lat.standardize(ds)
+ds = ild.lon.standardize(ds)
+ds = ild.bounds.build_from_centers(ds, "lat")
+ds = ild.bounds.build_from_centers(ds, "lon")
 
 # Decisions about naming derived from https://raw.githubusercontent.com/PCMDI/mip-cmor-tables/refs/heads/main/MIP_variables.json
 # Search for "landCoverFrac" to see how I modeled this
-ds = ild.set_var_attrs(
+ds = ild.variable.standardize(
     ds,
     VAR,
     units="",
@@ -150,8 +150,8 @@ ds = ds.drop_vars("spatial_ref")
 
 # Set global attributes and write NetCDF
 generate_stamp = time.strftime("%Y%m%d")
-tracking_id = ild.gen_trackingid()
-ds = ild.set_ods26_global_attrs(
+tracking_id = ild.output.new_tracking_id()
+ds = ild.global_attrs.set_ods26(
     ds,
     activity_id="ILAMB",
     contact="Martha Raynolds (mkraynolds@alaska.edu)",
@@ -189,7 +189,7 @@ ds = ild.set_ods26_global_attrs(
     variant_info="CMORized product prepared by ILAMB",
     version=f"v{generate_stamp}",
 )
-out_path = ild.create_output_filename(ds.attrs)
+out_path = ild.output.filename_from_attrs(ds.attrs)
 ds.to_netcdf(out_path)
 
 # --------------------------------------------------------------------------------------

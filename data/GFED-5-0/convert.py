@@ -12,19 +12,6 @@ import xarray as xr
 from matplotlib.colors import LogNorm
 
 import ilamb3_data as ild
-from ilamb3_data import (
-    create_output_filename,
-    gen_trackingid,
-    gen_utc_timestamp,
-    get_cmip6_variable_info,
-    set_coord_bounds,
-    set_lat_attrs,
-    set_lon_attrs,
-    set_ods26_global_attrs,
-    set_time_attrs,
-    set_var_attrs,
-    standardize_dim_order,
-)
 
 warnings.filterwarnings(
     "ignore",
@@ -69,10 +56,10 @@ for zip_path in raw_dir.glob("*.zip"):
 
 # Set timestamps and tracking id
 latest_zip = max(raw_dir.glob("*.zip"), key=lambda p: p.stat().st_mtime)
-download_stamp = gen_utc_timestamp(latest_zip.stat().st_mtime)
-creation_stamp = gen_utc_timestamp()
+download_stamp = ild.output.utc_timestamp(latest_zip.stat().st_mtime)
+creation_stamp = ild.output.utc_timestamp()
 today_stamp = datetime.now().strftime("%Y%m%d")
-tracking_id = gen_trackingid()
+tracking_id = ild.output.new_tracking_id()
 
 ######################################################################
 # Open netcdfs
@@ -155,16 +142,16 @@ ds = da.to_dataset()
 ######################################################################
 
 # Clean up attrs
-ds = set_time_attrs(ds, bounds_frequency="M")
-ds = set_lat_attrs(ds)
-ds = set_lon_attrs(ds)
-ds = set_coord_bounds(ds, "lat")
-ds = set_coord_bounds(ds, "lon")
-ds = standardize_dim_order(ds)
+ds = ild.time.standardize(ds, bounds_frequency="M")
+ds = ild.lat.standardize(ds)
+ds = ild.lon.standardize(ds)
+ds = ild.bounds.build_from_centers(ds, "lat")
+ds = ild.bounds.build_from_centers(ds, "lon")
+ds = ild.output.order_dimensions(ds)
 
 # Get variable attribute info via ESGF CMIP variable information
-var_info = get_cmip6_variable_info("burntFractionAll", "burntFractionAll")
-ds = set_var_attrs(
+var_info = ild.variable.lookup_cmip6("burntFractionAll", "burntFractionAll")
+ds = ild.variable.standardize(
     ds,
     var="burntFractionAll",
     units="%",
@@ -174,7 +161,7 @@ ds = set_var_attrs(
 )
 
 # Set global attributes and export
-out_ds = set_ods26_global_attrs(
+out_ds = ild.global_attrs.set_ods26(
     ds,
     comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
     contact="Thomas Nagler (thomas.nagler@enveo.at)",
@@ -215,7 +202,7 @@ out_ds = set_ods26_global_attrs(
 )
 
 # Prep for export
-out_path = create_output_filename(out_ds.attrs)
+out_path = ild.output.filename_from_attrs(out_ds.attrs)
 out_ds.to_netcdf(out_path, format="NETCDF4")
 
 ######################################################################

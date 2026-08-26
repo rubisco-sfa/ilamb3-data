@@ -23,7 +23,7 @@ if not RAW_PATH.is_dir():
 
 
 # Download CAVM 2.0 data from Mendeley Data HTML and unzip
-remote_source = "https://data.mendeley.com/public-files/datasets/c4xj5rv6kv/files/5223c414-234a-498c-ae08-3100cb38510f/file_downloaded"
+remote_source = "https://prod-dcd-datasets-public-files-eu-west-1.s3.eu-west-1.amazonaws.com/152e6f90-3319-4dde-b0d8-488591a38105"
 local_source = RAW_PATH / "Raster CAVM GIS data.zip"
 local_source = ild.download.from_html(remote_source, local_source)
 download_stamp = ild.output.utc_timestamp(local_source.stat().st_mtime)

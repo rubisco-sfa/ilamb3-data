@@ -94,7 +94,7 @@ raw_path = Path(RAW_PATH)
 raw_path.mkdir(parents=True, exist_ok=True)
 for link in links:
     local_source = Path(link).name.split("?")[0]
-    ild.download_from_html(link, str(raw_path / local_source))
+    ild.download.from_html(link, raw_path / local_source)
 
 # Unzip just the monthly data
 for zipfile in tqdm(glob(f"{RAW_PATH}/*.zip"), desc="Unzipping"):

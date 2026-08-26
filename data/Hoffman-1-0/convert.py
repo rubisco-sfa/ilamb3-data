@@ -8,9 +8,9 @@ import cftime as cf
 import numpy as np
 import xarray as xr
 
+import ilamb3_data as ild
 from ilamb3_data import (
     create_output_filename,
-    download_from_html,
     gen_trackingid,
     gen_utc_timestamp,
     get_cmip6_variable_info,
@@ -29,7 +29,7 @@ local_source = Path("_raw")
 local_source.mkdir(parents=True, exist_ok=True)
 local_source = local_source / Path(remote_source).name
 if not local_source.is_file():
-    download_from_html(remote_source, str(local_source))
+    ild.download.from_html(remote_source, local_source)
 
 # Set timestamps and tracking id
 download_stamp = gen_utc_timestamp(local_source.stat().st_mtime)

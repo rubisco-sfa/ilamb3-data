@@ -26,7 +26,7 @@ local_sources = [str(RAW_PATH / Path(s).name) for s in remote_sources]
 # ensure we have downloaded the data
 for remote_source, local_source in zip(remote_sources, local_sources):
     if not Path(local_source).is_file():
-        ild.download_from_html(remote_source, local_source)
+        ild.download.from_html(remote_source, local_source)
 download_stamp = ild.gen_utc_timestamp(Path(local_sources[0]).stat().st_mtime)
 
 # open and rename some variables

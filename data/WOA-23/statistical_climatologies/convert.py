@@ -7,9 +7,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+import ilamb3_data as ild
 from ilamb3_data import (
     create_output_filename,
-    download_from_html,
     gen_trackingid,
     gen_utc_timestamp,
     set_coord_bounds,
@@ -81,7 +81,7 @@ for full_name, periods in remote_source_dict.items():
             dest.parent.mkdir(parents=True, exist_ok=True)
 
             if not dest.is_file():
-                download_from_html(url, str(dest))
+                ild.download.from_html(url, dest)
 
             local_paths.append(str(dest))
         local_source_dict.setdefault(full_name, {})[period] = local_paths

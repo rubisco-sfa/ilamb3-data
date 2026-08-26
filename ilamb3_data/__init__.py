@@ -16,7 +16,6 @@ from cf_units import Unit
 from intake_esgf import ESGFCatalog
 
 from . import download
-from .download import ExistingDownloadWarning
 
 
 def create_registry(registry_file: str) -> pooch.Pooch:
@@ -33,96 +32,6 @@ def create_registry(registry_file: str) -> pooch.Pooch:
     )
     registry.load_registry(registry_file)
     return registry
-
-
-def download_from_html(
-    remote_source: str,
-    local_source: Path | str | None = None,
-    *,
-    pattern: str | None = None,
-    timeout: float = 180,
-    show_progress: bool = True,
-) -> Path | list[Path]:
-    """Compatibility wrapper for :func:`ilamb3_data.download.from_html`."""
-    return download.from_html(
-        remote_source,
-        local_source,
-        pattern=pattern,
-        timeout=timeout,
-        show_progress=show_progress,
-    )
-
-
-def download_from_s3(
-    remote_source: str,
-    local_source: Path | str,
-    *,
-    pattern: str = "*",
-    anon: bool = True,
-    show_progress: bool = True,
-) -> list[Path]:
-    """Compatibility wrapper for :func:`ilamb3_data.download.from_s3`."""
-    return download.from_s3(
-        remote_source,
-        local_source,
-        pattern=pattern,
-        anonymous=anon,
-        show_progress=show_progress,
-    )
-
-
-def download_from_arcgis_rest(
-    remote_source: str,
-    local_source: Path | str,
-    *,
-    where: str | list[str] = "1=1",
-    out_fields: str = "*",
-    out_sr: int = 4326,
-    timeout: float = 180,
-    show_progress: bool = True,
-) -> Path:
-    """Compatibility wrapper for :func:`ilamb3_data.download.from_arcgis_rest`."""
-    return download.from_arcgis_rest(
-        remote_source,
-        local_source,
-        where=where,
-        out_fields=out_fields,
-        out_sr=out_sr,
-        timeout=timeout,
-        show_progress=show_progress,
-    )
-
-
-def download_from_zenodo(
-    record: dict | str | int,
-    download_dir: Path | str = Path("_raw"),
-    *,
-    timeout: float = 180,
-    show_progress: bool = True,
-) -> list[Path]:
-    """Compatibility wrapper for :func:`ilamb3_data.download.from_zenodo`."""
-    return download.from_zenodo(
-        record,
-        download_dir,
-        timeout=timeout,
-        show_progress=show_progress,
-    )
-
-
-def download_from_figshare(
-    article_id: str | int,
-    local_path: Path | str = Path("_raw"),
-    *,
-    timeout: float = 180,
-    show_progress: bool = True,
-) -> list[Path]:
-    """Compatibility wrapper for :func:`ilamb3_data.download.from_figshare`."""
-    return download.from_figshare(
-        article_id,
-        local_path,
-        timeout=timeout,
-        show_progress=show_progress,
-    )
 
 
 def create_output_filename(attrs: dict) -> str:

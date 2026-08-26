@@ -7,9 +7,9 @@ import xarray as xr
 from rasterio.features import rasterize
 from rasterio.transform import from_bounds
 
+import ilamb3_data as ild
 from ilamb3_data import (
     create_output_filename,
-    download_from_arcgis_rest,
     gen_trackingid,
     set_coord_bounds,
     set_lat_attrs,
@@ -99,7 +99,7 @@ remote_source = (
 )
 local_source = Path("_raw/WBD_HUC02.geojson")
 
-local_source = download_from_arcgis_rest(
+local_source = ild.download.from_arcgis_rest(
     remote_source,
     local_source,
     where=[f"HUC2='{region:02d}'" for region in range(1, 23)],

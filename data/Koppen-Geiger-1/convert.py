@@ -6,9 +6,9 @@ from zipfile import ZipFile
 import numpy as np
 import xarray as xr
 
+import ilamb3_data as ild
 from ilamb3_data import (
     create_output_filename,
-    download_from_figshare,
     gen_trackingid,
     set_coord_bounds,
     set_lat_attrs,
@@ -116,7 +116,7 @@ def aggregate_regions(
 ########################################################################################
 # Download and unzip figshare data
 
-raw_files = download_from_figshare(FIGSHARE_ARTICLE_ID)
+raw_files = ild.download.from_figshare(FIGSHARE_ARTICLE_ID)
 for raw in raw_files:
     if raw.suffix != ".zip":
         continue

@@ -4,9 +4,9 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
+import ilamb3_data as ild
 from ilamb3_data import (
     create_output_filename,
-    download_from_html,
     gen_trackingid,
     gen_utc_timestamp,
     get_cmip6_variable_info,
@@ -30,7 +30,7 @@ for remote_source in remote_sources:
     local_source.mkdir(parents=True, exist_ok=True)
     source = local_source / Path(remote_source).name
     if not source.is_file():
-        download_from_html(remote_source, str(source))
+        ild.download.from_html(remote_source, source)
     local_sources.append(source)
 
 # Set timestamps and tracking id

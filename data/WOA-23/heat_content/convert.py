@@ -6,9 +6,9 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
+import ilamb3_data as ild
 from ilamb3_data import (
     create_output_filename,
-    download_from_html,
     gen_trackingid,
     gen_utc_timestamp,
     set_coord_bounds,
@@ -27,7 +27,7 @@ local_source = Path("_raw")
 local_source.mkdir(parents=True, exist_ok=True)
 source = local_source / Path(remote_source).name
 if not source.is_file():
-    download_from_html(remote_source, str(source))
+    ild.download.from_html(remote_source, source)
 
 # Set timestamps and tracking id
 download_stamp = gen_utc_timestamp(source.stat().st_mtime)

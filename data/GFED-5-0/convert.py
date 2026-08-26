@@ -11,9 +11,9 @@ import requests
 import xarray as xr
 from matplotlib.colors import LogNorm
 
+import ilamb3_data as ild
 from ilamb3_data import (
     create_output_filename,
-    download_from_zenodo,
     gen_trackingid,
     gen_utc_timestamp,
     get_cmip6_variable_info,
@@ -57,7 +57,7 @@ record = data["hits"]["hits"][0]
 
 # Download
 print(f"\nSelected dataset: {record['metadata'].get('title')}")
-download_from_zenodo(record, download_dir="_raw")
+ild.download.from_zenodo(record, destination="_raw")
 
 # Unzip downloaded ZIP files
 raw_dir = Path("_raw")

@@ -11,8 +11,11 @@ import ilamb3_data as ild
 earthaccess.login()  # You must create an account at https://urs.earthdata.nasa.gov/
 granules = earthaccess.search_data(
     short_name="CERES_EBAF",
-    granule_name="*200003-202509.nc",
+    granule_name="*200003-*.nc",  # Granule name sometimes changes
 )
+if not granules:
+    raise FileNotFoundError("No CERES EBAF Edition 4.2.1 granules found")
+granules = [max(granules, key=lambda granule: granule["umm"]["GranuleUR"])]
 # If not already downloaded, download granules
 files = earthaccess.download(granules, "_raw")
 
@@ -57,7 +60,9 @@ for var in vars:
         ds[var].attrs.pop(attr, None)
 
 # Clean up attrs
-ds = ild.time.standardize(ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(2000, 3, 1))
+ds = ild.time.standardize(
+    ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(2000, 3, 1)
+)
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)
 ds = ild.bounds.build_from_centers(ds, "lat")

@@ -20,8 +20,6 @@ from ilamb3_data import (
     set_var_attrs,
     standardize_dim_order,
 )
-from ilamb3_data.cf_attr import CFAttr
-from ilamb3_data.global_attrs_model import DataGlobalAttrs
 
 FILENAME = pathlib.Path(__file__).name
 PARENTNAME = pathlib.Path(__file__).parent.name
@@ -87,8 +85,8 @@ for var in vars:
         ds,
         var,
         units=ds[var].attrs["units"],
-        standard_name=var_info[CFAttr.cf_standard_name.value],
-        long_name=var_info[CFAttr.variable_long_name.value],
+        standard_name=var_info["cf_standard_name"],
+        long_name=var_info["variable_long_name"],
         target_dtype=np.dtype("float32"),
     )
 
@@ -136,11 +134,12 @@ for var in vars:
         f"{ILAMB_DATA_URL}/{PARENTNAME}/{FILENAME}"
     )
 
-    # validate
-    validated_global_attrs = DataGlobalAttrs.model_validate(global_attrs)
-
-    # Set global attributes
-    out_ds = set_ods26_global_attrs(var_ds, **(validated_global_attrs.flatten()))
+    flat_global_attrs = {
+        key: value
+        for section in global_attrs.values()
+        for key, value in section.items()
+    }
+    out_ds = set_ods26_global_attrs(var_ds, **flat_global_attrs)
 
     # Prep for export
     out_path = create_output_filename(out_ds.attrs)

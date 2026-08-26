@@ -1,26 +1,22 @@
 import datetime
-import fnmatch
 import json
-import os
 import re
 import urllib.request
 import uuid
 import warnings
-import zipfile
 from pathlib import Path
 from typing import Optional
-from urllib.parse import unquote, urljoin, urlparse
 
 import cftime as cf
 import numpy as np
 import pandas as pd
 import pooch
-import requests
-import s3fs
 import xarray as xr
 from cf_units import Unit
 from intake_esgf import ESGFCatalog
-from tqdm import tqdm
+
+from . import download
+from .download import ExistingDownloadWarning
 
 
 def create_registry(registry_file: str) -> pooch.Pooch:
@@ -44,106 +40,17 @@ def download_from_html(
     local_source: Path | str | None = None,
     *,
     pattern: str | None = None,
+    timeout: float = 180,
+    show_progress: bool = True,
 ) -> Path | list[Path]:
-    """
-    Download a file, or files matching a wildcard, from a remote URL.
-
-    When ``pattern`` is provided, ``remote_source`` must be an HTML page with
-    links and ``local_source`` is treated as a destination directory. Matching
-    uses shell-style wildcards (for example, ``*.zip``), and a list of
-    downloaded or extracted paths is returned.
-
-    If the "content-length" header is missing, it falls back to a simple download.
-    If the downloaded file is a .zip, it is extracted into a directory of the same name
-    and the extraction directory is returned.
-    Spaces in the filename are replaced with underscores.
-    """
-    CHUNKSIZE = 2**20  # 1 [Mb]
-    if not isinstance(remote_source, str):
-        raise TypeError(
-            f"remote_source must be a str, not {type(remote_source).__name__}"
-        )
-    if pattern is not None:
-        if not local_source:
-            raise ValueError("local_source must be a directory when pattern is used")
-
-        destination = Path(local_source)
-        destination.mkdir(parents=True, exist_ok=True)
-        page = requests.get(remote_source)
-        page.raise_for_status()
-        from bs4 import BeautifulSoup
-
-        soup = BeautifulSoup(page.text, "html.parser")
-        urls = [
-            urljoin(remote_source, href)
-            for link in soup.find_all("a", href=True)
-            if (href := link.get("href"))
-            and fnmatch.fnmatch(Path(urlparse(href).path).name, pattern)
-        ]
-
-        # Preserve listing order while ignoring duplicate links.
-        urls = list(dict.fromkeys(urls))
-        if not urls:
-            raise FileNotFoundError(
-                f"No files matching {pattern!r} found at {remote_source}"
-            )
-        downloaded_files = []
-        for url in urls:
-            downloaded_file = download_from_html(
-                url,
-                destination / Path(unquote(urlparse(url).path)).name,
-            )
-            if isinstance(downloaded_file, list):
-                raise TypeError("Expected a single downloaded file")
-            downloaded_files.append(downloaded_file)
-        return downloaded_files
-
-    if not local_source:
-        unquoted_url = unquote(urlparse(remote_source).path)
-        filename = Path(unquoted_url).name
-        local_source = Path(filename.replace(" ", "_"))
-    else:
-        local_source = Path(local_source)
-        local_source = local_source.with_name(local_source.name.replace(" ", "_"))
-
-    extract_dir = local_source.with_suffix("")
-    if local_source.is_file():
-        if zipfile.is_zipfile(local_source):
-            if not extract_dir.is_dir():
-                with zipfile.ZipFile(local_source, "r") as zf:
-                    zf.extractall(extract_dir)
-            return extract_dir
-        return local_source
-
-    resp = requests.get(remote_source, stream=True)
-    resp.raise_for_status()
-    total_size = [
-        int(value)
-        for key, value in resp.headers.items()
-        if key.lower() == "content-length"
-    ]
-    total_size = max(total_size) if total_size else 0
-
-    with open(str(local_source), "wb") as fdl:
-        if total_size:
-            with tqdm(
-                total=total_size, unit="B", unit_scale=True, desc=str(local_source)
-            ) as pbar:
-                for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
-                    if chunk:
-                        fdl.write(chunk)
-                        pbar.update(len(chunk))
-        else:
-            for chunk in resp.iter_content(chunk_size=CHUNKSIZE):
-                if chunk:
-                    fdl.write(chunk)
-
-    if zipfile.is_zipfile(local_source):
-        with zipfile.ZipFile(local_source, "r") as zf:
-            zf.extractall(extract_dir)
-        return extract_dir
-
-    return local_source
+    """Compatibility wrapper for :func:`ilamb3_data.download.from_html`."""
+    return download.from_html(
+        remote_source,
+        local_source,
+        pattern=pattern,
+        timeout=timeout,
+        show_progress=show_progress,
+    )
 
 
 def download_from_s3(
@@ -152,28 +59,16 @@ def download_from_s3(
     *,
     pattern: str = "*",
     anon: bool = True,
+    show_progress: bool = True,
 ) -> list[Path]:
-    """Download objects matching a wildcard from an S3 bucket or prefix."""
-    if not isinstance(remote_source, str):
-        raise TypeError(
-            f"remote_source must be a str, not {type(remote_source).__name__}"
-        )
-
-    destination = Path(local_source)
-    destination.mkdir(parents=True, exist_ok=True)
-    remote_pattern = f"{remote_source.rstrip('/')}/{pattern}"
-    filesystem = s3fs.S3FileSystem(anon=anon)
-    remote_files = filesystem.glob(remote_pattern)
-    if not remote_files:
-        raise FileNotFoundError(f"No files matching {remote_pattern!r}")
-
-    local_files = []
-    for remote_file in remote_files:
-        local_file = destination / Path(remote_file).name.replace(" ", "_")
-        if not local_file.is_file():
-            filesystem.get(remote_file, str(local_file))
-        local_files.append(local_file)
-    return local_files
+    """Compatibility wrapper for :func:`ilamb3_data.download.from_s3`."""
+    return download.from_s3(
+        remote_source,
+        local_source,
+        pattern=pattern,
+        anonymous=anon,
+        show_progress=show_progress,
+    )
 
 
 def download_from_arcgis_rest(
@@ -183,125 +78,51 @@ def download_from_arcgis_rest(
     where: str | list[str] = "1=1",
     out_fields: str = "*",
     out_sr: int = 4326,
-    timeout: int = 180,
+    timeout: float = 180,
+    show_progress: bool = True,
 ) -> Path:
-    """Query an ArcGIS REST feature layer and save the results as GeoJSON."""
-    if not isinstance(remote_source, str):
-        raise TypeError(
-            f"remote_source must be a str, not {type(remote_source).__name__}"
-        )
-
-    local_source = Path(local_source)
-    if local_source.is_file():
-        return local_source
-
-    queries = [where] if isinstance(where, str) else where
-    if not queries:
-        raise ValueError("where must contain at least one query")
-
-    features = []
-    query_url = f"{remote_source.rstrip('/')}/query"
-    for query in queries:
-        response = requests.get(
-            query_url,
-            params={
-                "where": query,
-                "outFields": out_fields,
-                "returnGeometry": "true",
-                "outSR": out_sr,
-                "f": "geojson",
-            },
-            timeout=timeout,
-        )
-        response.raise_for_status()
-        result = response.json()
-        if "error" in result:
-            error = result["error"]
-            message = error.get("message", "Unknown ArcGIS REST error")
-            details = "; ".join(error.get("details", []))
-            if details:
-                message = f"{message}: {details}"
-            raise RuntimeError(message)
-        if result.get("type") != "FeatureCollection" or not isinstance(
-            result.get("features"), list
-        ):
-            raise ValueError("ArcGIS REST response is not a GeoJSON FeatureCollection")
-        features.extend(result["features"])
-
-    local_source.parent.mkdir(parents=True, exist_ok=True)
-    local_source.write_text(
-        json.dumps({"type": "FeatureCollection", "features": features}),
-        encoding="utf-8",
+    """Compatibility wrapper for :func:`ilamb3_data.download.from_arcgis_rest`."""
+    return download.from_arcgis_rest(
+        remote_source,
+        local_source,
+        where=where,
+        out_fields=out_fields,
+        out_sr=out_sr,
+        timeout=timeout,
+        show_progress=show_progress,
     )
-    return local_source
 
 
-def download_from_zenodo(record: dict, download_dir: str):
-    """
-    Download all files from a Zenodo record dict into a '_temp' directory.
-    Example for getting a Zenodo record:
-
-        # Specify the dataset title you are looking for
-        dataset_title = "Global Fire Emissions Database (GFED5) Burned Area"
-
-        # Build the query string to search by title
-        params = {
-            "q": f'title:"{dataset_title}"'
-        }
-
-        # Define the Zenodo API endpoint
-        base_url = "https://zenodo.org/api/records"
-
-        # Send the GET request
-        response = requests.get(base_url, params=params)
-        if response.status_code != 200:
-            print("Error during search:", response.status_code)
-            exit(1)
-
-        # Parse the JSON response
-        data = response.json()
-
-        # Get record dictionary
-        records = data['hits']['hits']
-        record = data['hits']['hits'][0]
-    """
-    os.makedirs(download_dir, exist_ok=True)
-
-    title = record.get("metadata", {}).get("title", "No Title")
-    pub_date = record.get("metadata", {}).get("publication_date", "No publication date")
-    print(f"Found record:\n  Title: {title}\n  Publication Date: {pub_date}")
-
-    for file_info in record.get("files", []):
-        file_name = file_info.get("key")
-        file_url = file_info.get("links", {}).get("self")
-        local_file = os.path.join(download_dir, file_name)
-
-        if file_url:
-            print(f"Downloading {file_name} from {file_url} into {download_dir}...")
-            download_from_html(file_url, local_source=local_file)
-        else:
-            print(f"File URL not found for file: {file_name}")
+def download_from_zenodo(
+    record: dict | str | int,
+    download_dir: Path | str = Path("_raw"),
+    *,
+    timeout: float = 180,
+    show_progress: bool = True,
+) -> list[Path]:
+    """Compatibility wrapper for :func:`ilamb3_data.download.from_zenodo`."""
+    return download.from_zenodo(
+        record,
+        download_dir,
+        timeout=timeout,
+        show_progress=show_progress,
+    )
 
 
 def download_from_figshare(
-    article_id: str, local_path: Path = Path("_raw")
+    article_id: str | int,
+    local_path: Path | str = Path("_raw"),
+    *,
+    timeout: float = 180,
+    show_progress: bool = True,
 ) -> list[Path]:
-    """Download the files associated with a figshare article_id."""
-    local_path.mkdir(exist_ok=True, parents=True)
-    response = requests.get(f"https://api.figshare.com/v2/articles/{article_id}/files")
-    response.raise_for_status()
-    files = response.json()
-    out = []
-    for file_meta in files:
-        fname = local_path / file_meta["name"]
-        if not fname.is_file():
-            response = requests.get(file_meta["download_url"], stream=True)
-            response.raise_for_status()
-            with open(fname, "wb") as fd:
-                for chunk in response.iter_content(chunk_size=4096):
-                    fd.write(chunk)
-        out.append(fname)
-    return out
+    """Compatibility wrapper for :func:`ilamb3_data.download.from_figshare`."""
+    return download.from_figshare(
+        article_id,
+        local_path,
+        timeout=timeout,
+        show_progress=show_progress,
+    )
 
 
 def create_output_filename(attrs: dict) -> str:

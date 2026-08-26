@@ -83,7 +83,9 @@ for var in vars:
         ds[var].attrs.pop(attr, None)
 
 # Clean up attrs
-ds = ild.time.standardize(ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(1900, 1, 1))
+ds = ild.time.standardize(
+    ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(1900, 1, 1)
+)
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)
 ds = ild.bounds.build_from_centers(ds, "lat")

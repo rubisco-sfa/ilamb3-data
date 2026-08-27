@@ -7,6 +7,7 @@ paths they found there. Existing files are reused instead of downloaded again.
 from __future__ import annotations
 
 import fnmatch
+import inspect
 import json
 import warnings
 import zipfile
@@ -14,6 +15,7 @@ from collections.abc import Mapping
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
+from xml.etree import ElementTree
 
 import requests
 import s3fs
@@ -25,6 +27,29 @@ CHUNK_SIZE = 2**20
 
 class ExistingDownloadWarning(UserWarning):
     """Warn that a local download was found and will be reused."""
+
+
+def _default_destination() -> Path:
+    """Return ``_raw`` beside the Python file that called this module.
+
+    Interactive sessions do not have a caller file, so they fall back to an
+    ``_raw`` directory in the current working directory.
+    """
+    module_file = Path(__file__).resolve()
+    frame = inspect.currentframe()
+    try:
+        frame = frame.f_back if frame is not None else None
+        while frame is not None:
+            caller_file = frame.f_globals.get("__file__")
+            if caller_file is None:
+                return Path.cwd() / "_raw"
+            caller_path = Path(caller_file).resolve()
+            if caller_path != module_file:
+                return caller_path.parent / "_raw"
+            frame = frame.f_back
+    finally:
+        del frame
+    return Path.cwd() / "_raw"
 
 
 def _safe_name(name: str) -> str:
@@ -129,7 +154,8 @@ def from_html(
         A file URL, or an HTML listing URL when ``pattern`` is supplied.
     destination : Path or str, optional
         Output file for a file URL. For a listing, the directory in which matching
-        files are saved. If omitted for a file URL, its remote filename is used.
+        files are saved. If omitted, files are saved in ``_raw`` beside the calling
+        Python script, using remote filenames.
     pattern : str, optional
         Shell-style pattern used to select links, such as ``"*.zip"``.
     timeout : float, default: 180
@@ -149,9 +175,9 @@ def from_html(
 
     # Download file(s) via HTML listing with pattern matching
     if pattern is not None:
-        if destination is None:
-            raise ValueError("destination must be a directory when pattern is used")
-        output_dir = Path(destination)
+        output_dir = (
+            _default_destination() if destination is None else Path(destination)
+        )
         output_dir.mkdir(parents=True, exist_ok=True)
         response = requests.get(source, timeout=timeout)
         response.raise_for_status()
@@ -180,7 +206,7 @@ def from_html(
         filename = _safe_name(urlparse(source).path)
         if not filename:
             raise ValueError("destination is required when source has no filename")
-        output = Path(filename)
+        output = _default_destination() / filename
     else:
         output = Path(destination)
     return _from_http_file(
@@ -191,9 +217,104 @@ def from_html(
     )
 
 
+def from_thredds(
+    source: str,
+    destination: Path | str | None = None,
+    *,
+    pattern: str = "*",
+    timeout: float = 180,
+    show_progress: bool = True,
+) -> list[Path]:
+    """Find and download matching files from a THREDDS catalog.
+
+    Parameters
+    ----------
+    source : str
+        A THREDDS ``catalog.xml`` or ``catalog.html`` URL, or the corresponding
+        catalog or file-server directory URL.
+    destination : Path or str, optional
+        Directory in which matching files are saved. If omitted, files are saved
+        in ``_raw`` beside the calling Python script.
+    pattern : str, default: "*"
+        Shell-style dataset-name pattern, such as ``"*.nc"``.
+    timeout : float, default: 180
+        HTTP request timeout in seconds.
+    show_progress : bool, default: True
+        Show byte-level download progress with tqdm.
+
+    Returns
+    -------
+    list of Path
+        Local paths corresponding to every matched catalog dataset.
+    """
+    if not isinstance(source, str):
+        raise TypeError(f"source must be a str, not {type(source).__name__}")
+
+    output_dir = _default_destination() if destination is None else Path(destination)
+    output_dir.mkdir(parents=True, exist_ok=True)
+
+    # Normalize common THREDDS browser and file-server URLs to catalog.xml.
+    parsed = urlparse(source)
+    path = parsed.path
+    if "/fileServer/" in path and path.endswith("/"):
+        prefix, directory = path.split("/fileServer/", maxsplit=1)
+        catalog_path = f"{prefix}/catalog/{directory}catalog.xml"
+    elif "/catalog/" in path and path.endswith("/"):
+        catalog_path = f"{path}catalog.xml"
+    elif path.endswith("/catalog.html") or path.endswith("/catalog.xml"):
+        catalog_path = f"{path.rsplit('/', maxsplit=1)[0]}/catalog.xml"
+    else:
+        raise ValueError(
+            "source must be a THREDDS catalog URL or a catalog/fileServer "
+            "directory URL"
+        )
+    catalog_url = parsed._replace(
+        path=catalog_path,
+        query="",
+        fragment="",
+    ).geturl()
+
+    response = requests.get(catalog_url, timeout=timeout)
+    response.raise_for_status()
+
+    # Resolve the catalog's HTTP download service and matching datasets.
+    root = ElementTree.fromstring(response.content)
+    http_base = "/thredds/fileServer/"
+    for element in root.iter():
+        if (
+            element.tag.rsplit("}", maxsplit=1)[-1] == "service"
+            and element.attrib.get("serviceType") == "HTTPServer"
+        ):
+            http_base = element.attrib.get("base", http_base)
+            break
+
+    urls = []
+    for element in root.iter():
+        if element.tag.rsplit("}", maxsplit=1)[-1] != "dataset":
+            continue
+        url_path = element.attrib.get("urlPath")
+        name = element.attrib.get("name")
+        if url_path and name and fnmatch.fnmatch(name, pattern):
+            remote_path = f"{http_base.rstrip('/')}/{url_path.lstrip('/')}"
+            urls.append(urljoin(catalog_url, remote_path))
+    urls = list(dict.fromkeys(urls))
+
+    if not urls:
+        raise FileNotFoundError(f"No files matching {pattern!r} found at {source}")
+    return [
+        _from_http_file(
+            url,
+            output_dir / _safe_name(urlparse(url).path),
+            timeout=timeout,
+            show_progress=show_progress,
+        )
+        for url in urls
+    ]
+
+
 def from_s3(
     source: str,
-    destination: Path | str,
+    destination: Path | str | None = None,
     *,
     pattern: str = "*",
     anonymous: bool = True,
@@ -205,8 +326,9 @@ def from_s3(
     ----------
     source : str
         S3 bucket or prefix, for example ``"s3://bucket/prefix"``.
-    destination : Path or str
-        Directory in which matching objects are saved.
+    destination : Path or str, optional
+        Directory in which matching objects are saved. If omitted, objects are
+        saved in ``_raw`` beside the calling Python script.
     pattern : str, default: "*"
         Shell-style object-name pattern.
     anonymous : bool, default: True
@@ -221,7 +343,7 @@ def from_s3(
     """
     if not isinstance(source, str):
         raise TypeError(f"source must be a str, not {type(source).__name__}")
-    output_dir = Path(destination)
+    output_dir = _default_destination() if destination is None else Path(destination)
     output_dir.mkdir(parents=True, exist_ok=True)
     remote_pattern = f"{source.rstrip('/')}/{pattern}"
     filesystem = s3fs.S3FileSystem(anon=anonymous)
@@ -346,7 +468,7 @@ def from_arcgis_rest(
 
 def from_zenodo(
     record: Mapping[str, Any] | str | int,
-    destination: Path | str = Path("_raw"),
+    destination: Path | str | None = None,
     *,
     timeout: float = 180,
     show_progress: bool = True,
@@ -357,8 +479,9 @@ def from_zenodo(
     ----------
     record : mapping, str, or int
         A Zenodo API record mapping, or a Zenodo record ID to look up.
-    destination : Path or str, default: "_raw"
-        Directory in which record files are saved.
+    destination : Path or str, optional
+        Directory in which record files are saved. If omitted, files are saved in
+        ``_raw`` beside the calling Python script.
     timeout : float, default: 180
         HTTP request timeout in seconds.
     show_progress : bool, default: True
@@ -415,7 +538,7 @@ def from_zenodo(
     else:
         raise TypeError("record must be a mapping, str, or int")
 
-    output_dir = Path(destination)
+    output_dir = _default_destination() if destination is None else Path(destination)
     output_dir.mkdir(parents=True, exist_ok=True)
     outputs: list[Path] = []
     for file_info in record_data.get("files", []):
@@ -441,7 +564,7 @@ def from_zenodo(
 
 def from_figshare(
     article_id: str | int,
-    destination: Path | str = Path("_raw"),
+    destination: Path | str | None = None,
     *,
     timeout: float = 180,
     show_progress: bool = True,
@@ -452,8 +575,9 @@ def from_figshare(
     ----------
     article_id : str or int
         Figshare article identifier used to look up its files.
-    destination : Path or str, default: "_raw"
-        Directory in which article files are saved.
+    destination : Path or str, optional
+        Directory in which article files are saved. If omitted, files are saved in
+        ``_raw`` beside the calling Python script.
     timeout : float, default: 180
         HTTP request timeout in seconds.
     show_progress : bool, default: True
@@ -464,7 +588,7 @@ def from_figshare(
     list of Path
         Paths corresponding to all files in the article.
     """
-    output_dir = Path(destination)
+    output_dir = _default_destination() if destination is None else Path(destination)
     output_dir.mkdir(parents=True, exist_ok=True)
     response = requests.get(
         f"https://api.figshare.com/v2/articles/{article_id}/files",
@@ -489,5 +613,6 @@ __all__ = [
     "from_figshare",
     "from_html",
     "from_s3",
+    "from_thredds",
     "from_zenodo",
 ]

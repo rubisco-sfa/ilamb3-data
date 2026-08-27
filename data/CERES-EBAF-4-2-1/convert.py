@@ -61,7 +61,7 @@ for var in vars:
 
 # Clean up attrs
 ds = ild.time.standardize(
-    ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(2000, 3, 1)
+    ds, bounds_frequency="MS", ref_date=cf.DatetimeGregorian(2000, 3, 1)
 )
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)

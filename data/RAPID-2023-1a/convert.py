@@ -68,7 +68,7 @@ ds = ild.variable.standardize(
 )
 
 # Clean up attrs
-ds = ild.time.standardize(ds, bounds_frequency="M")
+ds = ild.time.standardize(ds, bounds_frequency="MS")
 ds = ild.lat.standardize(ds)
 ds = ild.depth.build_from_bounds(
     ds,

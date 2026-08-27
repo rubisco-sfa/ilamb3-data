@@ -1,10 +1,89 @@
+from datetime import timedelta
+
 import cftime as cf
 import numpy as np
-import pandas as pd
 import xarray as xr
 
 
-def create_time_bounds(freq: str, sdate: cf.datetime, edate: cf.datetime) -> np.ndarray:
+def _period_boundaries(
+    freq: str,
+    sdate: cf.datetime,
+    edate: cf.datetime,
+    calendar: str,
+) -> list[cf.datetime]:
+    """Return calendar-aware boundaries for the periods containing two dates."""
+    frequency = str(freq)
+    if frequency not in ("D", "MS", "QS-JAN", "YS"):
+        raise ValueError("freq must be one of 'D', 'MS', 'QS-JAN', or 'YS'")
+
+    start_fields = (
+        sdate.year,
+        sdate.month,
+        sdate.day,
+        sdate.hour,
+        sdate.minute,
+        sdate.second,
+        sdate.microsecond,
+    )
+    end_fields = (
+        edate.year,
+        edate.month,
+        edate.day,
+        edate.hour,
+        edate.minute,
+        edate.second,
+        edate.microsecond,
+    )
+    if end_fields < start_fields:
+        raise ValueError("edate must be >= sdate.")
+
+    if frequency == "D":
+        try:
+            lower = cf.datetime(
+                sdate.year, sdate.month, sdate.day, calendar=calendar
+            )
+            upper = cf.datetime(
+                edate.year, edate.month, edate.day, calendar=calendar
+            ) + timedelta(days=1)
+        except (TypeError, ValueError) as exc:
+            raise ValueError(
+                f"The daily extent cannot be represented in calendar {calendar!r}"
+            ) from exc
+    elif frequency == "MS":
+        lower = cf.datetime(sdate.year, sdate.month, 1, calendar=calendar)
+        year = edate.year + (1 if edate.month == 12 else 0)
+        month = 1 if edate.month == 12 else edate.month + 1
+        upper = cf.datetime(year, month, 1, calendar=calendar)
+    elif frequency == "QS-JAN":
+        month = 3 * ((sdate.month - 1) // 3) + 1
+        lower = cf.datetime(sdate.year, month, 1, calendar=calendar)
+        month = 3 * ((edate.month - 1) // 3) + 4
+        year = edate.year
+        if month > 12:
+            month -= 12
+            year += 1
+        upper = cf.datetime(year, month, 1, calendar=calendar)
+    else:
+        lower = cf.datetime(sdate.year, 1, 1, calendar=calendar)
+        upper = cf.datetime(edate.year + 1, 1, 1, calendar=calendar)
+
+    return list(
+        xr.date_range(
+            start=lower,
+            end=upper,
+            freq=frequency,
+            calendar=calendar,
+            use_cftime=True,
+        )
+    )
+
+
+def create_time_bounds(
+    freq: str,
+    sdate: cf.datetime,
+    edate: cf.datetime,
+    calendar: str = "standard",
+) -> np.ndarray:
     """
     Create an ndarray of CF-style time bounds from a frequency and date extent.
 
@@ -13,70 +92,29 @@ def create_time_bounds(freq: str, sdate: cf.datetime, edate: cf.datetime) -> np.
 
     Parameters
     ----------
-    freq : str
-        Frequency string, e.g., "M" for monthly, "Q" for quarterly, "A" for annual, etc.
-        See pandas documentation for valid frequency strings.
+    freq : {"D", "MS", "QS-JAN", "YS"}
+        Daily, monthly, quarterly, or yearly interval frequency.
     sdate : cf.datetime
         Start date of the time bounds.
     edate : cf.datetime
         End date of the time bounds.
+    calendar : str, default: "standard"
+        CF calendar used for the returned bounds.
 
     Returns
     -------
     np.ndarray
         An array of CF-style time bounds for the given frequency and date extent.
     """
-    # Validate inputs
-    if edate < sdate:
-        raise ValueError("edate must be >= sdate.")
-
-    # Convert cftime -> pandas Timestamp
-    def to_ts(dt):
-        return pd.Timestamp(
-            dt.year,
-            dt.month,
-            dt.day,
-            getattr(dt, "hour", 0),
-            getattr(dt, "minute", 0),
-            getattr(dt, "second", 0),
-            getattr(dt, "microsecond", 0),
-        )
-
-    s_ts, e_ts = to_ts(sdate), to_ts(edate)
-
-    # Validate/normalize frequency
-    try:
-        # Datetime offsets call month-end "ME" while PeriodIndex still uses "M".
-        offset = pd.tseries.frequencies.to_offset("ME" if freq == "M" else freq)
-    except ValueError as e:
-        raise ValueError(f"Invalid freq {freq!r}: {e}") from e
-    if offset is None:
-        raise ValueError(f"Invalid freq {freq!r}")
-
-    # Periods covering [sdate, edate] (inclusive of both periods that contain them)
-    periods = pd.period_range(start=s_ts, end=e_ts, freq=freq)
-    if len(periods) == 0:
-        raise ValueError("No periods found for the given bounds and frequency.")
-
-    starts = periods.start_time
-    ends = periods.end_time + pd.Timedelta(nanoseconds=1)
-
-    # pandas Timestamp -> cftime.DatetimeGregorian
-    def ts_to_cf(ts):
-        return cf.DatetimeGregorian(
-            ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second, ts.microsecond
-        )
-
-    bnds = np.array(
-        [(ts_to_cf(lo), ts_to_cf(hi)) for lo, hi in zip(starts, ends)], dtype=object
-    )
-    return bnds
+    boundaries = _period_boundaries(freq, sdate, edate, calendar)
+    return np.array(list(zip(boundaries[:-1], boundaries[1:])), dtype=object)
 
 
 def create_climatology_bounds(
     freq: str,
     sdate: cf.datetime,
     edate: cf.datetime,
+    calendar: str = "standard",
 ) -> np.ndarray:
     """
     Create an ndarray of CF-style bounds for climatological periods over a date range.
@@ -87,85 +125,79 @@ def create_climatology_bounds(
 
     Parameters
     ----------
-    freq : str
-        Frequency string, e.g., "M" for monthly, "Q" for quarterly, "A" for annual, etc.
-        See pandas documentation for valid frequency strings.
+    freq : {"D", "MS", "QS-JAN", "YS"}
+        Daily, monthly, quarterly, or yearly interval frequency.
     sdate : cf.datetime
         Start date of the climatology period.
     edate : cf.datetime
         End date of the climatology period.
+    calendar : str, default: "standard"
+        CF calendar used for the returned bounds.
 
     Returns
     -------
     np.ndarray
         An array of CF-style bounds for the climatological periods.
     """
-    if edate < sdate:
+    if (
+        edate.year,
+        edate.month,
+        edate.day,
+        edate.hour,
+        edate.minute,
+        edate.second,
+        edate.microsecond,
+    ) < (
+        sdate.year,
+        sdate.month,
+        sdate.day,
+        sdate.hour,
+        sdate.minute,
+        sdate.second,
+        sdate.microsecond,
+    ):
         raise ValueError("edate must be >= sdate.")
 
-    # cftime -> pandas Timestamp (we only need year/month/day)
-    def to_ts(dt):
-        return pd.Timestamp(
-            dt.year,
-            dt.month,
-            dt.day,
-            getattr(dt, "hour", 0),
-            getattr(dt, "minute", 0),
-            getattr(dt, "second", 0),
-            getattr(dt, "microsecond", 0),
+    template_year = sdate.year
+    if freq == "D" and calendar.lower() in {
+        "standard",
+        "gregorian",
+        "proleptic_gregorian",
+        "julian",
+    }:
+        while cf.is_leap_year(template_year, calendar=calendar):
+            template_year += 1
+    first = cf.datetime(template_year, 1, 1, calendar=calendar)
+    last = cf.datetime(template_year + 1, 1, 1, calendar=calendar) - timedelta(days=1)
+    template = create_time_bounds(freq, first, last, calendar)
+
+    bounds = []
+    for lower, upper in template:
+        bounds.append(
+            (
+                cf.datetime(
+                    sdate.year,
+                    lower.month,
+                    lower.day,
+                    lower.hour,
+                    lower.minute,
+                    lower.second,
+                    lower.microsecond,
+                    calendar=calendar,
+                ),
+                cf.datetime(
+                    edate.year + (upper.year - lower.year),
+                    upper.month,
+                    upper.day,
+                    upper.hour,
+                    upper.minute,
+                    upper.second,
+                    upper.microsecond,
+                    calendar=calendar,
+                ),
+            )
         )
-
-    s_ts, e_ts = to_ts(sdate), to_ts(edate)
-
-    try:
-        _ = pd.tseries.frequencies.to_offset("ME" if freq == "M" else freq)
-    except ValueError as e:
-        raise ValueError(f"Invalid freq {freq!r}: {e}") from e
-
-    # Build ONE template year of periods, then transplant years for bounds
-    # Use a non-leap anchor year; monthly/seasonal work fine with 2001.
-    base_start = pd.Timestamp(2001, 1, 1)
-    base_end = pd.Timestamp(2001, 12, 31, 23, 59, 59)
-    periods = pd.period_range(start=base_start, end=base_end, freq=freq)
-    if len(periods) == 0:
-        raise ValueError("No periods found for the given frequency within a year.")
-
-    starts = periods.start_time
-    ends = periods.end_time + pd.Timedelta(nanoseconds=1)
-
-    def rep_year(ts: pd.Timestamp, year: int) -> pd.Timestamp:
-        # Safe because period.start_time is always a valid first-of-period timestamp
-        return ts.replace(year=year)
-
-    rep_bounds = []
-    first_year = s_ts.year  # lower column: first climatology year
-    last_year = e_ts.year  # upper column: last climatology year (or +1 on wrap)
-    for s_i, e_i in zip(starts, ends):
-        s_rep = rep_year(s_i, first_year)
-        end_year = last_year
-        # If end-of-bin is "earlier" in the year than start-of-bin, it wraps into next year
-        if (e_i.month, e_i.day, e_i.hour, e_i.minute, e_i.second, e_i.microsecond) < (
-            s_i.month,
-            s_i.day,
-            s_i.hour,
-            s_i.minute,
-            s_i.second,
-            s_i.microsecond,
-        ):
-            end_year = last_year + 1
-        e_rep = rep_year(e_i, end_year)
-        rep_bounds.append((s_rep, e_rep))
-
-    # pandas Timestamp -> cftime.DatetimeGregorian
-    def ts_to_cf(ts: pd.Timestamp) -> cf.DatetimeGregorian:
-        return cf.DatetimeGregorian(
-            ts.year, ts.month, ts.day, ts.hour, ts.minute, ts.second, ts.microsecond
-        )
-
-    bnds = np.array(
-        [(ts_to_cf(lo), ts_to_cf(hi)) for lo, hi in rep_bounds], dtype=object
-    )
-    return bnds
+    return np.array(bounds, dtype=object)
 
 
 def add_rectilinear_bounds(

@@ -170,14 +170,12 @@ for name, period_dict in local_source_dict.items():
         ds[f"{std_var}_stderr"].encoding = {"_FillValue": None}
 
         # Standardize time/coord attrs & build monthly **climatology** bounds via your helper
-        ds = ild.time.standardize(
+        ds = ild.time.standardize_climatology(
             ds,
-            bounds_frequency="M",
+            bounds_frequency="MS",
+            sdate=cf.DatetimeGregorian(lbound.year, lbound.month, lbound.day),
+            edate=cf.DatetimeGregorian(2022, 1, 1),
             ref_date=ref_cf,  # reference cftime from dataset units
-            climatology=True,  # create climatology_bnds and time
-            create_new_time=False,  # use existing time values, don't re-create
-            clim_sdate=cf.DatetimeGregorian(lbound.year, lbound.month, lbound.day),
-            clim_edate=cf.DatetimeGregorian(2022, 1, 1),
         )
 
         # Lat/Lon/Depth attrs & bounds

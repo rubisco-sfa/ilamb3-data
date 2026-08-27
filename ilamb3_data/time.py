@@ -1,5 +1,3 @@
-import warnings
-
 import cftime as cf
 import numpy as np
 import pandas as pd
@@ -8,279 +6,384 @@ import xarray as xr
 from .bounds import create_climatology_bounds, create_time_bounds
 
 
-def build(
+def _as_cftime(value, calendar: str) -> cf.datetime:
+    """Convert a datetime-like value to cftime.datetime with the specified calendar."""
+    if isinstance(value, np.datetime64):
+        if np.isnat(value):
+            raise ValueError("Time coordinates cannot contain missing dates")
+        value = pd.Timestamp(value)
+    try:
+        return cf.datetime(
+            value.year,
+            value.month,
+            value.day,
+            getattr(value, "hour", 0),  # get value or default to 0 if it doesn't exist
+            getattr(value, "minute", 0),
+            getattr(value, "second", 0),
+            getattr(value, "microsecond", 0),
+            calendar=calendar,
+        )
+    except (AttributeError, TypeError, ValueError) as exc:
+        raise ValueError(
+            f"Date {value!r} cannot be represented in calendar {calendar!r}"
+        ) from exc
+
+
+def _read_time(ds: xr.Dataset) -> list[cf.datetime]:
+    """Read a one-dimensional time coordinate as cftime values."""
+
+    # Check that the dataset has a valid time coordinate called "time"
+    if "time" not in ds.coords:
+        raise ValueError(
+            "Dataset has no coordinate named 'time.' Rename existing time axis to "
+            "'time' before calling this function."
+        )
+    time = ds["time"]
+    if time.dims != ("time",):
+        raise ValueError("The 'time' coordinate must be one-dimensional")
+    if time.size == 0:
+        raise ValueError("The 'time' coordinate cannot be empty")
+
+    # Get calendar, assume "standard" (according to CF conventions) if not specified
+    calendar = time.attrs.get("calendar") or time.encoding.get("calendar") or "standard"
+
+    # If the time values are numeric, convert to cftime using units and calendar attrs
+    values = np.asarray(time.values)
+    if np.issubdtype(values.dtype, np.number):
+        units = time.attrs.get("units") or time.encoding.get("units")
+        if units is None:
+            raise ValueError("Numeric time coordinates must define CF time units")
+        return list(
+            np.asarray(
+                cf.num2date(
+                    values,
+                    units=units,
+                    calendar=calendar,
+                    only_use_cftime_datetimes=True,
+                ),
+                dtype=object,
+            )
+        )
+
+    # If the time values are already datetime-like, convert to cftime given calendar
+    if np.issubdtype(values.dtype, np.datetime64):
+        return [_as_cftime(value, calendar) for value in values]
+
+    # If the time values are already cftime.datetime, ensure calendar consistency
+    first_calendar = getattr(values[0], "calendar", calendar)
+    dates = [_as_cftime(value, first_calendar) for value in values]
+    if any(date.calendar != dates[0].calendar for date in dates[1:]):
+        raise ValueError("All time coordinate values must use the same calendar")
+    return dates
+
+
+def _assign_time_axis(
+    ds: xr.Dataset,
+    centers: list[cf.datetime],
+    bounds: np.ndarray,
+    *,
+    calendar: str,
+    ref_date: cf.datetime | None,
+    bounds_dim: str,
+    climatology: bool,
+    add_bounds: bool = True,
+) -> xr.Dataset:
+    """Attach a prepared time coordinate to a xarray Dataset and its optional bounds."""
+
+    # Validate inputs
+    if bounds.shape != (len(centers), 2):
+        raise ValueError("Time centers and bounds must have matching lengths")
+    if "time" in ds.sizes and ds.sizes["time"] != len(centers):
+        raise ValueError(
+            f"Generated {len(centers)} time values, but the dataset's time "
+            f"dimension has length {ds.sizes['time']}"
+        )
+    if not isinstance(bounds_dim, str) or not bounds_dim:
+        raise ValueError("bounds_dim must be a non-empty string")
+    if bounds_dim == "time":
+        raise ValueError("bounds_dim cannot be 'time'")
+    if add_bounds and bounds_dim in ds.sizes and ds.sizes[bounds_dim] != 2:
+        raise ValueError(
+            f"Bounds dimension {bounds_dim!r} must have size 2, "
+            f"not {ds.sizes[bounds_dim]}"
+        )
+
+    # Use the first lower bound as the reference date if not provided
+    reference = bounds[0, 0] if ref_date is None else _as_cftime(ref_date, calendar)
+    ref_text = (
+        f"{reference.year:04d}-{reference.month:02d}-{reference.day:02d} "
+        f"{reference.hour:02d}:{reference.minute:02d}:{reference.second:02d}"
+    )
+    if reference.microsecond:
+        ref_text += f".{reference.microsecond:06d}"
+    units = f"days since {ref_text}"
+
+    # Get existing bounds/climatology variable names
+    old_bounds = []
+    if "time" in ds.coords:
+        for attr in ("bounds", "climatology"):
+            name = ds["time"].attrs.get(attr)
+            if isinstance(name, str) and name in ds.variables:
+                old_bounds.append(name)
+
+    # Drop existing bounds/climatology variables and assign new time coordinate
+    out = ds.drop_vars(old_bounds, errors="ignore")
+    out = out.assign_coords(time=("time", np.asarray(centers, dtype=object)))
+    out["time"].attrs = {
+        "axis": "T",
+        "standard_name": "time",
+        "long_name": "time",
+    }
+
+    # Add time or climatology bounds as attributes to the time coordinate
+    bounds_name = "climatology_bnds" if climatology else "time_bnds"
+    if add_bounds:
+        out["time"].attrs["climatology" if climatology else "bounds"] = bounds_name
+
+    # Set encoding for time and bounds variables
+    out["time"].encoding = {
+        "units": units,
+        "calendar": calendar,
+        "dtype": "float64",  # obs4MIPs uses float64 for time
+        "_FillValue": None,
+    }
+
+    # Add the bounds variable (if requested) with appropriate encoding
+    if add_bounds:
+        out[bounds_name] = (("time", bounds_dim), bounds)
+        out[bounds_name].encoding = {
+            "units": units,
+            "calendar": calendar,
+            "dtype": "float64",
+            "_FillValue": None,
+        }
+    return out
+
+
+def create_time_axis(
+    ds: xr.Dataset,
     sdate: cf.datetime,
     edate: cf.datetime,
-    freq: str,
+    frequency: str,
+    *,
+    calendar: str = "standard",
     ref_date: cf.datetime | None = None,
-    climatology: bool = False,
-) -> tuple[xr.DataArray, xr.DataArray]:
+    add_bounds: bool = True,
+    bounds_dim: str = "bnds",
+) -> xr.Dataset:
     """
-    Build a CF-compliant time coordinate DataArray with attributes and encoding.
+    Create and attach a time coordinate to an xarray Dataset using a start date, end
+    date, and frequency. Optionally define a calendar, reference date for the time
+    units, and whether to add bounds. The bounds dimension name to look for or create
+    can also be specified.
 
-    For climatology=False:
-      - freq != 'fx': regular bounds & midpoints over [sdate, edate]
-      - freq == 'fx' : ONE time at the midpoint of [sdate, edate], bounds = [sdate, edate]
+    Time values are set to the exact midpoint of each interval. By default, bounds are
+    attached, and the first lower bound is used as the reference date. Drops existing
+    time coordinate and bounds/climatology variables if they exist.
 
-    For climatology=True:
-      - freq != 'fx': climatology_bnds span from sdate.year to edate.year (per CF §7.4); time is a representative cycle
-      - freq == 'fx' : ONE time at the midpoint of [sdate, edate], climatology_bnds = [sdate, edate]
+    Parameters
+    ----------
+    ds : xr.Dataset
+        The dataset to which the time coordinate will be attached.
+    sdate : cf.datetime
+        The start date of the time axis.
+    edate : cf.datetime
+        The end date of the time axis.
+    frequency : str
+        The frequency of the time axis; only "D", "MS", "QS-JAN", "YS", or "fx" are
+        supported. "fx" is a special case for fixed time intervals, where the start and
+        end dates define a single interval.
+    calendar : str, optional
+        The calendar to use for the time axis. Default is "standard".
+    ref_date : cf.datetime, optional
+        The reference date for the time units. If not provided, the first lower bound
+        is used.
+    add_bounds : bool, optional
+        Whether to add bounds to the time coordinate. Default is True.
+    bounds_dim : str, optional
+        The name of the bounds dimension. Default is "bnds".
+
+    Returns
+    -------
+    xr.Dataset
+        The dataset with the new time coordinate and optional bounds attached.
     """
-    # validate inputs
-    if edate < sdate:
-        raise ValueError("edate must be >= sdate.")
-    if ref_date is None:
-        raise ValueError("ref_date must be provided.")
-    if ref_date > sdate:
-        raise ValueError("ref_date must be <= sdate.")
-    if ref_date.calendar != sdate.calendar or ref_date.calendar != edate.calendar:
-        raise ValueError("sdate, edate, and ref_date must have the same calendar.")
-
-    fx = str(freq).lower() == "fx"
-
-    # --- Build bounds + midpoints ---
-    if fx:
-        # single midpoint + single bounds pair
-        bnds = np.array([(sdate, edate)], dtype=object)
-        mid_dts = [sdate + (edate - sdate) / 2]
+    if frequency == "fx":
+        lower = _as_cftime(sdate, calendar)
+        upper = _as_cftime(edate, calendar)
+        if upper < lower:
+            raise ValueError("edate must be >= sdate")
+        bounds = np.array([(lower, upper)], dtype=object)
     else:
-        if climatology:
-            bnds = create_climatology_bounds(freq, sdate, edate)
-            # representative cycle midpoints: use month from lower bound, 15th in a midpoint year
-            e_ts = pd.Timestamp(
-                edate.year, getattr(edate, "month", 1), getattr(edate, "day", 1)
-            )
-            last_full_year = (e_ts - pd.Timedelta(days=1)).year
-            mid_year = sdate.year + (last_full_year - sdate.year) // 2
-            months = [lo.month for lo, _ in bnds]
-            mid_dts = [
-                cf.DatetimeGregorian(mid_year, m, 15, 0, 0, 0, 0) for m in months
-            ]
-        else:
-            bnds = create_time_bounds(freq, sdate, edate)
-            mid_dts = [lo + (hi - lo) / 2 for lo, hi in bnds]
-
-    # --- Units & convert midpoints to numeric gregorian (stable for write) ---
-    ref_str = f"{ref_date.year:04d}-{ref_date.month:02d}-{ref_date.day:02d} 00:00:00"
-    units = f"days since {ref_str}"
-
-    orig_calendar_nums = cf.date2num(mid_dts, units, sdate.calendar)
-    gregorian_dts = cf.num2date(orig_calendar_nums.tolist(), units, "gregorian")
-    gregorian_nums = cf.date2num(gregorian_dts, units, "gregorian")
-    gregorian_nums_arr = np.array(gregorian_nums, dtype="float64")
-
-    # time coordinate
-    time_da = xr.DataArray(
-        data=gregorian_nums_arr,
-        dims=("time",),
-        coords={"time": gregorian_nums_arr},
-        attrs={
-            "axis": "T",
-            "standard_name": "time",
-            "long_name": "time",
-            "bounds": "time_bnds",
-            "units": units,
-            "calendar": "gregorian",
-        },
-        name="time",
+        bounds = create_time_bounds(frequency, sdate, edate, calendar)
+    centers = [lower + (upper - lower) / 2 for lower, upper in bounds]
+    return _assign_time_axis(
+        ds,
+        centers,
+        bounds,
+        calendar=calendar,
+        ref_date=ref_date,
+        bounds_dim=bounds_dim,
+        climatology=False,
+        add_bounds=add_bounds,
     )
-
-    # bounds variable
-    if climatology:
-        time_da.attrs.pop("bounds", None)
-        time_da.attrs["climatology"] = "climatology_bnds"
-        bnds_da = xr.DataArray(
-            data=bnds.astype(object),
-            dims=("time", "bnds"),
-            coords={"time": time_da},
-            name="climatology_bnds",
-        )
-        bnds_da.attrs = {"units": units, "calendar": "gregorian"}
-        bnds_da.encoding = {"dtype": "float64", "_FillValue": None}
-    else:
-        bnds_da = xr.DataArray(
-            data=bnds.astype(object),
-            dims=("time", "bnds"),
-            coords={"time": time_da},
-            name="time_bnds",
-        )
-        bnds_da.attrs = {"units": units, "calendar": "gregorian"}
-        bnds_da.encoding = {"dtype": "float64", "_FillValue": None}
-
-    time_da.encoding = {"dtype": "float64", "_FillValue": None}
-    return time_da, bnds_da
-
-
-def to_numeric(
-    da: xr.DataArray, units: str, calendar: str = "gregorian", dtype="float64"
-) -> xr.DataArray:
-    """Convert cftime/Python datetimes in a DataArray to numeric CF time,
-    keeping dims/coords and updating attrs/encoding."""
-    if calendar == "standard":
-        calendar = "gregorian"
-
-    # If already numeric, just cast
-    if np.issubdtype(da.dtype, np.number):
-        out = da.astype(dtype)
-    else:
-        out = xr.apply_ufunc(
-            cf.date2num,
-            da,
-            kwargs={"units": units, "calendar": calendar},
-            vectorize=True,  # elementwise over any shape (time) or (time,2)
-            dask="allowed",
-            output_dtypes=[np.dtype(dtype)],
-        )
-
-    # attrs: copy and enforce updated units/calendar
-    out.attrs = {**da.attrs, "units": units, "calendar": calendar}
-
-    # encoding: start from existing, but force dtype and _FillValue=None
-    enc = dict(getattr(da, "encoding", {}))  # shallow copy if present
-    enc["dtype"] = np.dtype(dtype)
-    enc["_FillValue"] = None
-
-    out.encoding = enc
-    return out
 
 
 def standardize(
     ds: xr.Dataset,
     bounds_frequency: str,
+    *,
+    calendar: str = "standard",
     ref_date: cf.datetime | None = None,
-    create_new_time: bool = False,
-    sdate: cf.datetime | None = None,
-    edate: cf.datetime | None = None,
-    climatology: bool = False,
-    clim_sdate: cf.datetime | None = None,
-    clim_edate: cf.datetime | None = None,
+    bounds_dim: str = "bnds",
 ) -> xr.Dataset:
     """
-    Set time-related attributes for an xarray Dataset, including time bounds.
+    Standardize an xarray Dataset's existing time coordinate and add interval bounds.
+
+    Time values are set to the exact midpoint of each interval if they are not already.
+    The bounds frequency determines the length of each interval.
 
     Parameters
     ----------
     ds : xr.Dataset
-        The dataset to modify.
+        The dataset with an existing time coordinate to standardize.
     bounds_frequency : str
-        Frequency of the time bounds (e.g., "M" for monthly, "fx" for fixed).
-    ref_date : cf.datetime | None, optional
-        Reference date for CF time conversion. If None, the first time value in the dataset is used.
-    create_new_time : bool, default False
-        Whether to create a new time coordinate from scratch.
-    sdate : cf.datetime | None, optional
-        Start date for creating new time coordinate.
-    edate : cf.datetime | None, optional
-        End date for creating new time coordinate.
-    climatology : bool, default False
-        Whether to set climatology bounds.
-    clim_sdate : cf.datetime | None, optional
-        Start date for climatology bounds.
-    clim_edate : cf.datetime | None, optional
-        End date for climatology bounds.
+        The frequency of the time bounds; only "D", "MS", "QS-JAN", "YS", are supported.
+        If the time coordinate is fixed ("fx"), use create_time_axis() instead.
+    calendar : str, optional
+        The calendar to use for the time axis. Default is "standard".
+    ref_date : cf.datetime, optional
+        The reference date for the time units. If not provided, the first lower bound
+        is used.
+    bounds_dim : str, optional
+        The name of the bounds dimension. Default is "bnds".
 
     Returns
     -------
     xr.Dataset
-        The dataset with updated time attributes.
+        The dataset with the new standardized time coordinate and bounds attached.
     """
-    if bounds_frequency is None:
-        raise ValueError("bounds_frequency must be provided.")
-    if ref_date is None:
-        try:
-            ref_date = ds["time"].values[0]
-            warnings.warn(
-                "ref_date not provided; using first time value in dataset as ref_date."
-            )
-        except Exception as e:
-            raise ValueError(
-                "ref_date must be provided if dataset has no time coordinate."
-            ) from e
 
-    fx = str(bounds_frequency).lower() == "fx"
+    # If fixed time interval, sdate and edate are required to define the bounds
+    # So recommend using create_time_axis() instead of standardize() for fixed intervals
+    if bounds_frequency == "fx":
+        raise ValueError("Use create_time_axis() to define a fixed time interval")
 
-    # --- Create or reformat ---
-    if create_new_time:
-        # require explicit sdate/edate for fx or generic build
-        if sdate is None or edate is None:
-            raise ValueError(
-                "sdate and edate must be provided to create time from scratch."
-            )
-        time_da, bnds_da = build(
-            sdate, edate, bounds_frequency, ref_date, climatology
-        )
-        ds = ds.assign_coords({"time": time_da})
-        ds = ds.assign(
-            {"time_bnds": bnds_da} if not climatology else {"climatology_bnds": bnds_da}
-        )
-    else:
-        if "time" not in ds:
-            raise ValueError("Dataset has no 'time' coordinate to reformat.")
-        if not isinstance(ds["time"].values[0], cf.datetime):
-            raise ValueError("Dataset 'time' coordinate values are not cftime objects.")
+    # Read the time coordinate and validate that it contains one value per interval
+    dates = _read_time(ds)
+    source_calendar = dates[0].calendar
 
-        if climatology:
-            if fx:
-                if clim_sdate is None or clim_edate is None:
-                    raise ValueError(
-                        "clim_sdate and clim_edate are required when bounds_frequency='fx'."
-                    )
-                time_da, bnds_da = build(
-                    clim_sdate, clim_edate, "fx", ref_date, True
-                )
-            else:
-                if clim_sdate is None or clim_edate is None:
-                    raise ValueError(
-                        "clim_sdate and clim_edate must be provided for climatology=True."
-                    )
-                time_da, bnds_da = build(
-                    clim_sdate, clim_edate, bounds_frequency, ref_date, True
-                )
-        else:
-            if fx:
-                if sdate is None or edate is None:
-                    raise ValueError(
-                        "sdate and edate are required when bounds_frequency='fx'."
-                    )
-                time_da, bnds_da = build(sdate, edate, "fx", ref_date, False)
-            else:
-                time_da, bnds_da = build(
-                    sdate=cf.datetime(
-                        ds["time"].values[0].year,
-                        ds["time"].values[0].month,
-                        ds["time"].values[0].day,
-                        calendar=ds["time"].values[0].calendar,
-                    ),
-                    edate=cf.datetime(
-                        ds["time"].values[-1].year,
-                        ds["time"].values[-1].month,
-                        ds["time"].values[-1].day,
-                        calendar=ds["time"].values[-1].calendar,
-                    ),
-                    freq=bounds_frequency,
-                    ref_date=ref_date,
-                    climatology=False,
-                )
-
-        ds = ds.assign_coords({"time": time_da})
-        ds = ds.assign(
-            {"time_bnds": bnds_da} if not climatology else {"climatology_bnds": bnds_da}
-        )
-
-    # --- Encode bounds + time numerically while keeping attrs/encoding ---
-    time_units = ds["time"].attrs["units"]
-    time_cal = ds["time"].attrs.get("calendar", "gregorian")
-
-    if climatology:
-        ds["climatology_bnds"] = to_numeric(
-            ds["climatology_bnds"], time_units, time_cal, "float64"
-        )
-    else:
-        ds["time_bnds"] = to_numeric(
-            ds["time_bnds"], time_units, time_cal, "float64"
-        )
-
-    ds = ds.assign_coords(
-        time=to_numeric(ds["time"], time_units, time_cal, "float64")
+    # Validate the existing time coordinates and current calendar
+    source_bounds = create_time_bounds(
+        bounds_frequency, dates[0], dates[-1], source_calendar
     )
-    return ds
+    if len(source_bounds) != len(dates) or any(
+        not (lower <= date < upper)
+        for date, (lower, upper) in zip(dates, source_bounds)
+    ):
+        raise ValueError(
+            "The time coordinate must contain one ordered value per "
+            f"{bounds_frequency!r} interval"
+        )
+
+    # Convert to new calendar if necessary, and compute the new centers and bounds
+    bounds = source_bounds
+    if calendar != source_calendar:
+        bounds = create_time_bounds(bounds_frequency, dates[0], dates[-1], calendar)
+    centers = [lower + (upper - lower) / 2 for lower, upper in bounds]
+    return _assign_time_axis(
+        ds,
+        centers,
+        bounds,
+        calendar=calendar,
+        ref_date=ref_date,
+        bounds_dim=bounds_dim,
+        climatology=False,
+    )
+
+
+def standardize_climatology(
+    ds: xr.Dataset,
+    bounds_frequency: str,
+    sdate: cf.datetime,
+    edate: cf.datetime,
+    *,
+    calendar: str = "standard",
+    ref_date: cf.datetime | None = None,
+    bounds_dim: str = "bnds",
+) -> xr.Dataset:
+    """
+    Standardize a climatological time coordinate and add climatology bounds.
+
+    ``sdate`` and ``edate`` describe the period used to calculate the climatology. Time
+    values are representative exact midpoints of the first occurrence of each
+    climatological interval.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        The dataset with an existing time coordinate to standardize.
+    bounds_frequency : str
+        The frequency of the time bounds; only "D", "MS", "QS-JAN", "YS", and "fx" are
+        supported. Use "fx" for fixed climatology intervals, where ``sdate`` and
+        ``edate`` define a single interval.
+    sdate : cf.datetime
+        The start date of the climatology interval.
+    edate : cf.datetime
+        The end date of the climatology interval.
+    calendar : str, optional
+        The calendar to use for the time axis. Default is "standard".
+    ref_date : cf.datetime, optional
+        The reference date for the time units. If not provided, the first lower bound
+        is used.
+    bounds_dim : str, optional
+        The name of the bounds dimension. Default is "bnds".
+
+    Returns
+    -------
+    xr.Dataset
+        The dataset with the new climatological time coordinate and bounds attached.
+    """
+    _read_time(ds)
+    bounds = create_climatology_bounds(bounds_frequency, sdate, edate, calendar)
+
+    centers = []
+    for lower, upper in bounds:
+        lower_fields = (
+            lower.month,
+            lower.day,
+            lower.hour,
+            lower.minute,
+            lower.second,
+            lower.microsecond,
+        )
+        upper_fields = (
+            upper.month,
+            upper.day,
+            upper.hour,
+            upper.minute,
+            upper.second,
+            upper.microsecond,
+        )
+        upper_year = lower.year + (1 if upper_fields <= lower_fields else 0)
+        representative_upper = cf.datetime(
+            upper_year,
+            upper.month,
+            upper.day,
+            upper.hour,
+            upper.minute,
+            upper.second,
+            upper.microsecond,
+            calendar=calendar,
+        )
+        centers.append(lower + (representative_upper - lower) / 2)
+
+    return _assign_time_axis(
+        ds,
+        centers,
+        bounds,
+        calendar=calendar,
+        ref_date=ref_date,
+        bounds_dim=bounds_dim,
+        climatology=True,
+    )

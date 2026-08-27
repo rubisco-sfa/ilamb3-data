@@ -152,7 +152,7 @@ ds = ds.assign_coords(
 )
 
 # Standardize the dimensions
-ds = ild.time.standardize(ds, bounds_frequency="M")
+ds = ild.time.standardize(ds, bounds_frequency="MS")
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)
 

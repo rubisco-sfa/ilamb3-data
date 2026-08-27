@@ -253,13 +253,12 @@ def create_netcdf(
 
     # create time dimension
     ds = ds.drop_vars(["spatial_ref"], errors="ignore")
-    ds = ild.time.standardize(
+    ds = ild.time.create_time_axis(
         ds,
-        bounds_frequency="fx",
+        cf.DatetimeGregorian(sdate.year, sdate.month, sdate.day),
+        cf.DatetimeGregorian(edate.year, edate.month, edate.day),
+        "fx",
         ref_date=cf.DatetimeGregorian(sdate.year, sdate.month, sdate.day),
-        create_new_time=True,
-        sdate=cf.DatetimeGregorian(sdate.year, sdate.month, sdate.day),
-        edate=cf.DatetimeGregorian(edate.year, edate.month, edate.day),
     )
     ds = ild.lat.standardize(ds)
     ds = ild.lon.standardize(ds)

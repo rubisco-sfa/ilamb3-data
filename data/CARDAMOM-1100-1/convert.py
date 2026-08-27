@@ -398,7 +398,7 @@ def main(source: str = SOURCE_FILE):
         # Use built-in ILAMB funcs to build dimensions/attributes
         out = ild.time.standardize(
             out,
-            bounds_frequency="M",
+            bounds_frequency="MS",
             ref_date=cf.DatetimeProlepticGregorian(1850, 1, 1),
         )
         out = ild.lat.standardize(out)

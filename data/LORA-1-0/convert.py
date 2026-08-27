@@ -57,7 +57,7 @@ ds.mrro_sd.encoding = {
 }
 
 # Clean up attrs
-ds = ild.time.standardize(ds, bounds_frequency="M")
+ds = ild.time.standardize(ds, bounds_frequency="MS")
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)
 ds = ild.bounds.add_rectilinear_bounds(ds)

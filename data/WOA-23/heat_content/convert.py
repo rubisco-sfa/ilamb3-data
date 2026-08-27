@@ -126,7 +126,7 @@ ds = ild.variable.standardize(
 )
 
 # Clean up attrs
-ds = ild.time.standardize(ds, bounds_frequency="Y")
+ds = ild.time.standardize(ds, bounds_frequency="YS")
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)
 ds = ild.depth.build_from_bounds(
@@ -167,7 +167,7 @@ for var in ["ohcJm2", "ohc"]:
     if var == "ohcJm2":
         out_ds = ds[base_vars + [var]]
         out_ds = ild.output.order_dimensions(out_ds)
-        out_ds["time"].encoding = {"_FillValue": None}
+        out_ds["time"].encoding["_FillValue"] = None
     else:
         out_ds = ds[base_vars + [var, "ohc_stderr"]]
         out_ds = out_ds.drop_dims(["lat", "lon"])
@@ -182,7 +182,7 @@ for var in ["ohcJm2", "ohc"]:
         # so I have to set them again
         out_ds["depth"].attrs, out_ds["depth"].encoding = orig_attrs, orig_encoding
         out_ds = ild.output.order_dimensions(out_ds)
-        out_ds["time"].encoding = {"_FillValue": None}
+        out_ds["time"].encoding["_FillValue"] = None
 
     # Define varibable-dependant attributes
     ohc_title = "WOA23 global yearly mean ocean heat content (0-2000m) anomaly (WOA09 1955-2006 anomaly baseline) from in-situ profile data"

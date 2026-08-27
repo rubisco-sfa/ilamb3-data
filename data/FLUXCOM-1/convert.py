@@ -52,7 +52,7 @@ for fluxcom, cmip in fluxcom_to_cmip.items():
     # Add measures and bounds
     ds["cell_measures"] = cm
     ds[cmip].attrs["cell_measures"] = "area: cell_measures"
-    ds = ild.time.standardize(ds, bounds_frequency="M")
+    ds = ild.time.standardize(ds, bounds_frequency="MS")
     ds = ild.lat.standardize(ds)
     ds = ild.lon.standardize(ds)
     ds = ild.bounds.add_rectilinear_bounds(ds)

@@ -31,7 +31,7 @@ tracking_id = ild.output.new_tracking_id()
 # Load the dataset for adjustments
 time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
 ds = xr.open_dataset(local_source, decode_times=time_coder)
-ds = ild.time.standardize(ds, bounds_frequency="Y", ref_date=cf.DatetimeNoLeap(1850, 1, 1))
+ds = ild.time.standardize(ds, bounds_frequency="YS", ref_date=cf.DatetimeNoLeap(1850, 1, 1))
 
 for var in VARS:
     # Get attribute info for fgco2 and nbp
@@ -68,7 +68,7 @@ ds["fgco2"].attrs.pop("bounds", None)
 for var in VARS:
     # Create one ds per variable
     out_ds = ds.drop_vars([v for v in ds if (var not in v and "time" not in v)])
-    out_ds["time"].encoding = {"_FillValue": None}
+    out_ds["time"].encoding["_FillValue"] = None
 
     # Define varibable-dependant attributes
     dynamic_attrs = {

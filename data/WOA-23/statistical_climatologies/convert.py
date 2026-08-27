@@ -191,8 +191,7 @@ for name, period_dict in local_source_dict.items():
             positive="down",
             long_name="depth of sea water",
         )
-        ds = ild.bounds.build_from_centers(ds, "lat")
-        ds = ild.bounds.build_from_centers(ds, "lon")
+        ds = ild.bounds.add_rectilinear_bounds(ds)
 
         # Order + var selection
         ds = ild.output.order_dimensions(ds)

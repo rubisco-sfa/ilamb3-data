@@ -4,12 +4,27 @@ import pandas as pd
 import xarray as xr
 
 
-def build_time_from_frequency(
-    freq: str, sdate: cf.datetime, edate: cf.datetime
-) -> np.ndarray:
+def create_time_bounds(freq: str, sdate: cf.datetime, edate: cf.datetime) -> np.ndarray:
     """
-    Build CF-style time bounds [start, end) for a given frequency and start/end dates.
-    Returns: np.ndarray of shape (ntime, 2), dtype=object, with cftime.DatetimeGregorian.
+    Create an ndarray of CF-style time bounds from a frequency and date extent.
+
+    Returns an object array with shape ``(ntime, 2)`` whose intervals cover every period
+    containing a date from ``sdate`` through ``edate``.
+
+    Parameters
+    ----------
+    freq : str
+        Frequency string, e.g., "M" for monthly, "Q" for quarterly, "A" for annual, etc.
+        See pandas documentation for valid frequency strings.
+    sdate : cf.datetime
+        Start date of the time bounds.
+    edate : cf.datetime
+        End date of the time bounds.
+
+    Returns
+    -------
+    np.ndarray
+        An array of CF-style time bounds for the given frequency and date extent.
     """
     # Validate inputs
     if edate < sdate:
@@ -44,7 +59,7 @@ def build_time_from_frequency(
         raise ValueError("No periods found for the given bounds and frequency.")
 
     starts = periods.start_time
-    ends = (periods + 1).start_time  # ends[i] == starts[i+1]
+    ends = periods.end_time + pd.Timedelta(nanoseconds=1)
 
     # pandas Timestamp -> cftime.DatetimeGregorian
     def ts_to_cf(ts):
@@ -58,15 +73,32 @@ def build_time_from_frequency(
     return bnds
 
 
-def build_climatology_from_frequency(
+def create_climatology_bounds(
     freq: str,
     sdate: cf.datetime,
     edate: cf.datetime,
 ) -> np.ndarray:
     """
-    Build CF-style climatology bounds [start, end) for a *single* cycle of `freq`.
-    Starts use the first climatology year (sdate.year); ends use the last (edate.year),
-    with +1 year for wrap-around (e.g., Dec->Jan). Matches CF §7.4 semantics.
+    Create an ndarray of CF-style bounds for climatological periods over a date range.
+
+    ``freq`` determines the intervals represented by the bounds. Lower bounds use the
+    year of ``sdate``, and upper bounds use the year of ``edate``. If a period wraps
+    into the next calendar year, the upper bound will use ``edate.year + 1``.
+
+    Parameters
+    ----------
+    freq : str
+        Frequency string, e.g., "M" for monthly, "Q" for quarterly, "A" for annual, etc.
+        See pandas documentation for valid frequency strings.
+    sdate : cf.datetime
+        Start date of the climatology period.
+    edate : cf.datetime
+        End date of the climatology period.
+
+    Returns
+    -------
+    np.ndarray
+        An array of CF-style bounds for the climatological periods.
     """
     if edate < sdate:
         raise ValueError("edate must be >= sdate.")
@@ -99,7 +131,7 @@ def build_climatology_from_frequency(
         raise ValueError("No periods found for the given frequency within a year.")
 
     starts = periods.start_time
-    ends = (periods + 1).start_time  # [start, next_start)
+    ends = periods.end_time + pd.Timedelta(nanoseconds=1)
 
     def rep_year(ts: pd.Timestamp, year: int) -> pd.Timestamp:
         # Safe because period.start_time is always a valid first-of-period timestamp
@@ -136,41 +168,143 @@ def build_climatology_from_frequency(
     return bnds
 
 
-def build_from_centers(ds: xr.Dataset, coord: str) -> xr.Dataset:
+def add_rectilinear_bounds(
+    ds: xr.Dataset,
+    *,
+    latitude: str = "lat",
+    longitude: str = "lon",
+    bounds_dim: str = "bnds",
+    overwrite: bool = False,
+) -> xr.Dataset:
     """
-    Compute and attach 1D cell boundaries for `coord` using a 'bnds'=2
-    dimension. Ensures float32 output, no _FillValue, and correct ordering.
+    Compute and attach bounds to xr.Dataset for rectilinear lat/lon coordinates.
+
+    Bounds are placed halfway between adjacent coordinate values. The outer bounds are
+    estimated using the spacing between the two nearest values.
+
+    Parameters
+    ----------
+    ds : xr.Dataset
+        Dataset containing the latitude and longitude coordinates.
+    latitude : str, default: "lat"
+        Name of the 1D latitude coordinate.
+    longitude : str, default: "lon"
+        Name of the 1D longitude coordinate.
+    bounds_dim : str, default: "bnds"
+        Name of the trailing, size-two vertex dimension. The dimension is
+        created when absent and reused when present.
+    overwrite : bool, default: False
+        Replace bounds already identified by a coordinate's ``bounds``
+        attribute. By default, valid existing bounds are preserved.
+
+    Returns
+    -------
+    xr.Dataset
+        The dataset with ``<latitude>_bnds`` and ``<longitude>_bnds`` added.
+
+    Notes
+    -----
+    This function does not support curvilinear or unstructured grids.
     """
-    # make sure we have a 'bnds' dimension of length 2
-    if "nv" in ds.dims:
-        ds = ds.rename_dims({"nv": "bnds"})
+    # Validate inputs
+    if latitude == longitude:
+        raise ValueError("latitude and longitude must name different coordinates")
+    if not isinstance(bounds_dim, str) or not bounds_dim:
+        raise ValueError("bounds_dim must be a non-empty string")
+    if bounds_dim in ds.sizes and ds.sizes[bounds_dim] != 2:
+        raise ValueError(
+            f"Bounds dimension {bounds_dim!r} must have size 2, "
+            f"not {ds.sizes[bounds_dim]}"
+        )
 
-    # cast and grab values
-    ds[coord] = ds[coord].astype(np.float64)
-    vals = ds[coord].values
-    n = vals.shape[0]
+    # Create a "plan" for building bounds for each coordinate
+    plans = []
+    for coord in (latitude, longitude):
+        # Validate coordinate shape, type, and monotonicity
+        if coord not in ds.coords:
+            raise KeyError(f"Coordinate {coord!r} not found in dataset")
+        if ds[coord].ndim != 1:
+            raise ValueError(f"Coordinate {coord!r} must be one-dimensional")
+        if ds[coord].size < 2:
+            raise ValueError(f"Coordinate {coord!r} must contain at least two values")
+        if not np.issubdtype(ds[coord].dtype, np.number):
+            raise TypeError(f"Coordinate {coord!r} must be numeric")
+        coord_dim = ds[coord].dims[0]
+        if coord_dim == bounds_dim:
+            raise ValueError(
+                f"bounds_dim {bounds_dim!r} cannot also be the dimension of "
+                f"coordinate {coord!r}"
+            )
+        vals = np.asarray(ds[coord].values, dtype=np.float64)
+        if not np.isfinite(vals).all():
+            raise ValueError(f"Coordinate {coord!r} must contain only finite values")
+        deltas = np.diff(vals)
+        if not (np.all(deltas > 0) or np.all(deltas < 0)):
+            raise ValueError(f"Coordinate {coord!r} must be strictly monotonic")
 
-    # build midpoint array
-    b = np.empty((n, 2), dtype=np.float64)
-    # interior midpoints
-    b[1:-1, 0] = 0.5 * (vals[:-2] + vals[1:-1])
-    b[1:-1, 1] = 0.5 * (vals[1:-1] + vals[2:])
-    # edge extrapolation
-    d0 = vals[1] - vals[0]
-    dn = vals[-1] - vals[-2]
-    b[0] = [vals[0] - d0 / 2, vals[0] + d0 / 2]
-    b[-1] = [vals[-1] - dn / 2, vals[-1] + dn / 2]
+        # Validate existing bounds if present
+        existing_name = ds[coord].attrs.get("bounds")
+        if existing_name is not None and not isinstance(existing_name, str):
+            raise TypeError(
+                f"The bounds attribute of coordinate {coord!r} must be a string"
+            )
 
-    # sort so column 0 is lower bound, column 1 is upper
-    b = np.sort(b, axis=1)
+        # Check for existing bounds and validity
+        if existing_name and not overwrite:
+            if existing_name not in ds.variables:
+                raise ValueError(
+                    f"Coordinate {coord!r} references missing bounds variable "
+                    f"{existing_name!r}"
+                )
+            existing = ds[existing_name]
+            expected_leading_dims = ds[coord].dims
+            if (
+                existing.ndim != ds[coord].ndim + 1
+                or existing.dims[:-1] != expected_leading_dims
+                or existing.sizes[existing.dims[-1]] != 2
+                or not np.issubdtype(existing.dtype, np.number)
+                or not np.isfinite(existing.values).all()
+            ):
+                raise ValueError(
+                    f"Bounds variable {existing_name!r} for coordinate {coord!r} "
+                    "must be numeric with the coordinate dimensions followed by "
+                    "a size-two vertex dimension"
+                )
+            continue
 
-    # assign into the dataset
-    name = f"{coord}_bnds"
-    ds[name] = ((coord, "bnds"), b)
+        # Don't overwrite existing bounds if they are already valid
+        bounds_name = existing_name or f"{coord}_bnds"
+        if bounds_name in ds.variables and not overwrite:
+            raise ValueError(
+                f"Bounds variable {bounds_name!r} already exists but is not "
+                f"identified by coordinate {coord!r}; use overwrite=True to replace it"
+            )
 
-    # reset encoding and attrs
-    ds[name].encoding = {"_FillValue": None, "dtype": "float64"}
-    ds[coord].attrs["bounds"] = name
-    ds[coord].encoding = {"_FillValue": None, "dtype": "float64"}
+        n = vals.shape[0]
 
-    return ds
+        # Build interior bounds from adjacent centers and extrapolate the edges
+        bnds = np.empty((n, 2), dtype=np.float64)
+        bnds[1:-1, 0] = 0.5 * (vals[:-2] + vals[1:-1])
+        bnds[1:-1, 1] = 0.5 * (vals[1:-1] + vals[2:])
+        bnds[0] = [
+            vals[0] - (vals[1] - vals[0]) / 2,
+            0.5 * (vals[0] + vals[1]),
+        ]
+        bnds[-1] = [
+            0.5 * (vals[-2] + vals[-1]),
+            vals[-1] + (vals[-1] - vals[-2]) / 2,
+        ]
+        bnds = np.sort(bnds, axis=1)
+        plans.append((coord, coord_dim, bounds_name, bnds))
+
+    # Apply changes only after both coordinates and all existing bounds validate
+    out = ds.copy()
+    for coord in (latitude, longitude):
+        out[coord] = out[coord].astype(np.float64)
+        out[coord].encoding = {"_FillValue": None, "dtype": "float64"}
+    for coord, coord_dim, bounds_name, bnds in plans:
+        out[bounds_name] = ((coord_dim, bounds_dim), bnds)
+        out[bounds_name].encoding = {"_FillValue": None, "dtype": "float64"}
+        out[coord].attrs["bounds"] = bounds_name
+
+    return out

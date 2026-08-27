@@ -65,8 +65,7 @@ ds = ild.time.standardize(
 )
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)
-ds = ild.bounds.build_from_centers(ds, "lat")
-ds = ild.bounds.build_from_centers(ds, "lon")
+ds = ild.bounds.add_rectilinear_bounds(ds)
 ds = ild.output.order_dimensions(ds)
 
 # Set global attributes and export

@@ -180,8 +180,7 @@ for VAR_ID in VAR_IDS:
 
     # Store the selected aggregation as a categorical data variable.
     ds = region_ids.to_dataset(name=VAR_ID)
-    ds = ild.bounds.build_from_centers(ds, "lat")
-    ds = ild.bounds.build_from_centers(ds, "lon")
+    ds = ild.bounds.add_rectilinear_bounds(ds)
     ds = ild.lat.standardize(ds)
     ds = ild.lon.standardize(ds)
 

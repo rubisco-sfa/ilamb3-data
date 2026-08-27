@@ -117,8 +117,7 @@ df = df[df["Raster code"].isin(raster_codes)].copy()
 # Set lat/lon/var attributes
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)
-ds = ild.bounds.build_from_centers(ds, "lat")
-ds = ild.bounds.build_from_centers(ds, "lon")
+ds = ild.bounds.add_rectilinear_bounds(ds)
 
 # Decisions about naming derived from https://raw.githubusercontent.com/PCMDI/mip-cmor-tables/refs/heads/main/MIP_variables.json
 # Search for "landCoverFrac" to see how I modeled this

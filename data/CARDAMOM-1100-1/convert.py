@@ -403,8 +403,7 @@ def main(source: str = SOURCE_FILE):
         )
         out = ild.lat.standardize(out)
         out = ild.lon.standardize(out)
-        out = ild.bounds.build_from_centers(out, "lat")
-        out = ild.bounds.build_from_centers(out, "lon")
+        out = ild.bounds.add_rectilinear_bounds(out)
         out = ild.output.order_dimensions(out)
 
         # --- set NetCDF global attributes ---------------------------------------------

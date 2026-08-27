@@ -69,8 +69,7 @@ for var, info in zip(vars, var_info):
 ds = ild.time.standardize(ds, bounds_frequency="M")
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)
-ds = ild.bounds.build_from_centers(ds, "lat")
-ds = ild.bounds.build_from_centers(ds, "lon")
+ds = ild.bounds.add_rectilinear_bounds(ds)
 
 # Order + var selection
 ds = ild.output.order_dimensions(ds)

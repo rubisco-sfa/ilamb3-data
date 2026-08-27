@@ -145,8 +145,7 @@ ds = da.to_dataset()
 ds = ild.time.standardize(ds, bounds_frequency="M")
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)
-ds = ild.bounds.build_from_centers(ds, "lat")
-ds = ild.bounds.build_from_centers(ds, "lon")
+ds = ild.bounds.add_rectilinear_bounds(ds)
 ds = ild.output.order_dimensions(ds)
 
 # Get variable attribute info via ESGF CMIP variable information

@@ -136,8 +136,7 @@ ds = ild.depth.build_from_bounds(
     positive="down",
     long_name="depth of sea water",
 )
-ds = ild.bounds.build_from_centers(ds, "lat")
-ds = ild.bounds.build_from_centers(ds, "lon")
+ds = ild.bounds.add_rectilinear_bounds(ds)
 
 # global temporal mean of ohcJm2
 anomaly_per_cell = ohcJm2 * cell_area  # per-cell anomaly

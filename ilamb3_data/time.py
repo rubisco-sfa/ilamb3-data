@@ -5,7 +5,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from .bounds import build_climatology_from_frequency, build_time_from_frequency
+from .bounds import create_climatology_bounds, create_time_bounds
 
 
 def build(
@@ -45,7 +45,7 @@ def build(
         mid_dts = [sdate + (edate - sdate) / 2]
     else:
         if climatology:
-            bnds = build_climatology_from_frequency(freq, sdate, edate)
+            bnds = create_climatology_bounds(freq, sdate, edate)
             # representative cycle midpoints: use month from lower bound, 15th in a midpoint year
             e_ts = pd.Timestamp(
                 edate.year, getattr(edate, "month", 1), getattr(edate, "day", 1)
@@ -57,7 +57,7 @@ def build(
                 cf.DatetimeGregorian(mid_year, m, 15, 0, 0, 0, 0) for m in months
             ]
         else:
-            bnds = build_time_from_frequency(freq, sdate, edate)
+            bnds = create_time_bounds(freq, sdate, edate)
             mid_dts = [lo + (hi - lo) / 2 for lo, hi in bnds]
 
     # --- Units & convert midpoints to numeric gregorian (stable for write) ---

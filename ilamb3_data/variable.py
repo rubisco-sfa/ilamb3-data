@@ -46,6 +46,7 @@ def lookup_cmip6(search_key: str, variable_id: str | None = None) -> dict:
             "intake-esgf.ESGFCatalog().variable_info(<search_key>) instead."
         )
 
+
 def convert_units(
     da: xr.DataArray,
     target_units: str,
@@ -101,6 +102,7 @@ def _sanitize_units(u: str) -> str:
     u = re.sub(r"/([A-Za-z]+)", r" \1-1", u)
     # 3) strip any stray carets
     return u.replace("^", "")
+
 
 def standardize(
     ds: xr.Dataset,
@@ -212,14 +214,16 @@ def standardize(
         if sanitized_unit != orig:
             da.attrs["units"] = sanitized_unit
 
-    current_units = da.attrs.get("units", None)
-    effective_units = units
+    current_units = da.attrs.get("units", None)  # current units attribute
+    effective_units = units  # desired units
 
-    # only convert if there *was* an original units and it differs
+    # if current units exist and differ from the target...
     if current_units is not None and current_units != units:
+        # if wanting to convert, do so and set the unit attribute
         if convert:
             warnings.warn(f"Converting {var} units from {current_units} to {units}")
             da = convert_units(da, units)
+        # if not wanting to convert, keep the original units and unit attribute
         else:
             warnings.warn(
                 f"Variable '{var}' has units '{current_units}', "
@@ -247,9 +251,7 @@ def standardize(
         raise ValueError("flag_values and flag_meanings must be provided together.")
     if flag_values is not None and flag_meanings is not None:
         if len(flag_values) != len(flag_meanings):
-            raise ValueError(
-                "flag_values and flag_meanings must have the same length."
-            )
+            raise ValueError("flag_values and flag_meanings must have the same length.")
         final_dt = np.dtype(target_dtype) if target_dtype is not None else da.dtype
         attrs["flag_values"] = np.asarray(flag_values, dtype=final_dt)
         attrs["flag_meanings"] = " ".join(flag_meanings)

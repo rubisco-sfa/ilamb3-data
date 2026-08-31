@@ -94,7 +94,7 @@ raw_path = Path(RAW_PATH)
 raw_path.mkdir(parents=True, exist_ok=True)
 for link in links:
     local_source = Path(link).name.split("?")[0]
-    ild.download_from_html(link, str(raw_path / local_source))
+    ild.download.from_html(link, raw_path / local_source)
 
 # Unzip just the monthly data
 for zipfile in tqdm(glob(f"{RAW_PATH}/*.zip"), desc="Unzipping"):
@@ -152,16 +152,16 @@ ds = ds.assign_coords(
 )
 
 # Standardize the dimensions
-ds = ild.set_time_attrs(ds, bounds_frequency="M")
-ds = ild.set_lat_attrs(ds)
-ds = ild.set_lon_attrs(ds)
+ds = ild.time.standardize(ds, bounds_frequency="MS")
+ds = ild.lat.standardize(ds)
+ds = ild.lon.standardize(ds)
 
 # Define the global attributes
 download_stamp = time.strftime(
     "%Y-%m-%d", time.localtime(Path("manifest.html").stat().st_ctime)
 )
 generate_stamp = time.strftime("%Y-%m-%d")
-tracking_id = ild.gen_trackingid()
+tracking_id = ild.output.new_tracking_id()
 
 for varname in tqdm(ds, desc="Writing netcdf files"):
     if "_stderr" in varname or "_bnds" in varname:
@@ -177,7 +177,7 @@ for varname in tqdm(ds, desc="Writing netcdf files"):
         out_ds[varname].attrs["ancillary_variables"] = uname
 
     has_stderr = "gpp" in varname or "reco" in varname
-    out_ds = ild.set_ods26_global_attrs(
+    out_ds = ild.global_attrs.set_ods26(
         out_ds,
         aux_uncertainty_id="stderr" if has_stderr else "",
         comment=f"{varname}=(DT+NT)/2 and {varname}_stderr = |DT-NT|/2"
@@ -218,5 +218,5 @@ for varname in tqdm(ds, desc="Writing netcdf files"):
         version=f"v{generate_stamp.replace('-', '')}",
     )
 
-    out_path = ild.create_output_filename(out_ds.attrs)
+    out_path = ild.output.filename_from_attrs(out_ds.attrs)
     out_ds.to_netcdf(out_path)

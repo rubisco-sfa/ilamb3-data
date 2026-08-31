@@ -26,8 +26,8 @@ local_sources = [str(RAW_PATH / Path(s).name) for s in remote_sources]
 # ensure we have downloaded the data
 for remote_source, local_source in zip(remote_sources, local_sources):
     if not Path(local_source).is_file():
-        ild.download_from_html(remote_source, local_source)
-download_stamp = ild.gen_utc_timestamp(Path(local_sources[0]).stat().st_mtime)
+        ild.download.from_html(remote_source, local_source)
+download_stamp = ild.output.utc_timestamp(Path(local_sources[0]).stat().st_mtime)
 
 # open and rename some variables
 ds = xr.open_mfdataset(local_sources)
@@ -35,17 +35,17 @@ ds = ds.rename({"hfds": "hfdsl", "hfds_sd": "hfdsl_sd", "rs": "rns", "rs_sd": "r
 
 # fix up coordinates
 ds["time"] = [cf.DatetimeGregorian(t.dt.year, t.dt.month, t.dt.day) for t in ds["time"]]
-ds = ild.set_time_attrs(
+ds = ild.time.standardize(
     ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(2003, 1, 1)
 )
-ds = ild.set_lat_attrs(ds)
-ds = ild.set_lon_attrs(ds)
-ds = ild.set_coord_bounds(ds, "lat")
-ds = ild.set_coord_bounds(ds, "lon")
+ds = ild.lat.standardize(ds)
+ds = ild.lon.standardize(ds)
+ds = ild.bounds.build_from_centers(ds, "lat")
+ds = ild.bounds.build_from_centers(ds, "lon")
 
 # write netcdf for each variable
 generate_stamp = time.strftime("%Y%m%d")
-tracking_id = ild.gen_trackingid()
+tracking_id = ild.output.new_tracking_id()
 variables = [v for v in ds if ("_sd" not in v and "_bnds" not in v)]
 for var in variables:
     uncert = f"{var}_sd"
@@ -63,14 +63,14 @@ for var in variables:
     }
     if "_sd" not in var:
         try:
-            var_info = ild.get_cmip6_variable_info(var, var)
+            var_info = ild.variable.lookup_cmip6(var, var)
         except Exception:
             var_info["variable_long_name"] = (
                 var_info["variable_long_name"].replace("_", " ").title()
             )
 
     # format the var attrs
-    out = ild.set_var_attrs(
+    out = ild.variable.standardize(
         out,
         var,
         units=var_info["variable_units"],
@@ -92,7 +92,7 @@ for var in variables:
     out[uncert].encoding["_FillValue"] = np.float32(1.0e20)
 
     # set the global attrs
-    out = ild.set_ods26_global_attrs(
+    out = ild.global_attrs.set_ods26(
         out,
         aux_uncertainty_id="sd",
         contact="Sanaa Hobeichi (s.hobeichi@unsw.edu.au)",
@@ -129,5 +129,5 @@ for var in variables:
         variant_info="CMORized product prepared by ILAMB",
         version=f"v{generate_stamp}",
     )
-    out_path = ild.create_output_filename(out.attrs)
+    out_path = ild.output.filename_from_attrs(out.attrs)
     out.to_netcdf(out_path)

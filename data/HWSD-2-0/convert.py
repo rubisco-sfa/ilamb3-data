@@ -29,19 +29,7 @@ from dask.distributed import Client, LocalCluster
 from osgeo import gdal
 
 # Determine the parent directory (ILAMB-DATA)
-from ilamb3_data import (
-    create_output_filename,
-    gen_trackingid,
-    gen_utc_timestamp,
-    get_cmip6_variable_info,
-    set_coord_bounds,
-    set_lat_attrs,
-    set_lon_attrs,
-    set_ods26_global_attrs,
-    set_time_attrs,
-    set_var_attrs,
-    standardize_dim_order,
-)
+import ilamb3_data as ild
 
 #####################################################
 # set parameters
@@ -265,35 +253,33 @@ def create_netcdf(
 
     # create time dimension
     ds = ds.drop_vars(["spatial_ref"], errors="ignore")
-    ds = set_time_attrs(
+    ds = ild.time.create_time_axis(
         ds,
-        bounds_frequency="fx",
+        cf.DatetimeGregorian(sdate.year, sdate.month, sdate.day),
+        cf.DatetimeGregorian(edate.year, edate.month, edate.day),
+        "fx",
         ref_date=cf.DatetimeGregorian(sdate.year, sdate.month, sdate.day),
-        create_new_time=True,
-        sdate=cf.DatetimeGregorian(sdate.year, sdate.month, sdate.day),
-        edate=cf.DatetimeGregorian(edate.year, edate.month, edate.day),
     )
-    ds = set_lat_attrs(ds)
-    ds = set_lon_attrs(ds)
-    ds = set_coord_bounds(ds, "lat")
-    ds = set_coord_bounds(ds, "lon")
-    ds = standardize_dim_order(ds)
+    ds = ild.lat.standardize(ds)
+    ds = ild.lon.standardize(ds)
+    ds = ild.bounds.add_rectilinear_bounds(ds)
+    ds = ild.output.order_dimensions(ds)
 
     # ensure csoil has time dimension
     ds[var] = ds[var].expand_dims(time=ds.sizes["time"]).assign_coords(time=ds["time"])
     ds["time"].encoding["_FillValue"] = None
 
     # Set timestamps and tracking id
-    download_stamp = gen_utc_timestamp(Path(local_data).stat().st_mtime)
-    creation_stamp = gen_utc_timestamp()
+    download_stamp = ild.output.utc_timestamp(Path(local_data).stat().st_mtime)
+    creation_stamp = ild.output.utc_timestamp()
     today_stamp = datetime.datetime.now().strftime("%Y%m%d")
-    tracking_id = gen_trackingid()
+    tracking_id = ild.output.new_tracking_id()
 
     # get variable attribute info via ESGF CMIP variable information
-    info = get_cmip6_variable_info(var, var)
+    info = ild.variable.lookup_cmip6(var, var)
 
     # set variable attributes
-    ds = set_var_attrs(
+    ds = ild.variable.standardize(
         ds,
         var,
         units=info["variable_units"],
@@ -314,7 +300,7 @@ def create_netcdf(
 """
 
     # set the attributes
-    ds = set_ods26_global_attrs(
+    ds = ild.global_attrs.set_ods26(
         ds,
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
         contact="Matieu Henry (matieu.henry@fao.org)",
@@ -349,7 +335,7 @@ def create_netcdf(
     )
 
     # export as netcdf
-    out_path = create_output_filename(ds.attrs)
+    out_path = ild.output.filename_from_attrs(ds.attrs)
     ds.to_netcdf(out_path, format="NETCDF4")
 
 

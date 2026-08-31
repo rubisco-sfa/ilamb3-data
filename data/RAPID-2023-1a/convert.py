@@ -5,18 +5,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from ilamb3_data import (
-    create_output_filename,
-    gen_trackingid,
-    gen_utc_timestamp,
-    get_cmip6_variable_info,
-    set_depth_attrs,
-    set_lat_attrs,
-    set_ods26_global_attrs,
-    set_time_attrs,
-    set_var_attrs,
-    standardize_dim_order,
-)
+import ilamb3_data as ild
 
 # Follow link to download source; it cannot be downloaded automatically
 # Select "MOC transports in NetCDF format" for download
@@ -31,10 +20,10 @@ if not source.is_file():
     sys.exit(1)
 
 # Set timestamps and tracking id
-download_stamp = gen_utc_timestamp(source.stat().st_mtime)
-creation_stamp = gen_utc_timestamp()
+download_stamp = ild.output.utc_timestamp(source.stat().st_mtime)
+creation_stamp = ild.output.utc_timestamp()
 today_stamp = datetime.now().strftime("%Y%m%d")
-tracking_id = gen_trackingid()
+tracking_id = ild.output.new_tracking_id()
 
 # Load the dataset for adjustments
 time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
@@ -68,8 +57,8 @@ ds = ds.drop_vars([v for v in ds.data_vars if v != "moc_mar_hc10"]).rename_vars(
 ds["msftmz"] = ds["msftmz"].expand_dims({"depth": ds["depth"], "lat": ds["lat"]})
 
 # Set var attrs
-var_info = get_cmip6_variable_info("msftmz", "msftmz")
-ds = set_var_attrs(
+var_info = ild.variable.lookup_cmip6("msftmz", "msftmz")
+ds = ild.variable.standardize(
     ds,
     "msftmz",
     units=var_info["variable_units"],
@@ -79,19 +68,19 @@ ds = set_var_attrs(
 )
 
 # Clean up attrs
-ds = set_time_attrs(ds, bounds_frequency="M")
-ds = set_lat_attrs(ds)
-ds = set_depth_attrs(
+ds = ild.time.standardize(ds, bounds_frequency="MS")
+ds = ild.lat.standardize(ds)
+ds = ild.depth.build_from_bounds(
     ds,
     bounds=np.array([[0, 2000]]),
     units="meters",
     positive="down",
     long_name="depth of sea water",
 )
-ds = standardize_dim_order(ds)
+ds = ild.output.order_dimensions(ds)
 
 # Set global attributes and export
-out_ds = set_ods26_global_attrs(
+out_ds = ild.global_attrs.set_ods26(
     ds,
     comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
     contact="Ben Moat (ben.moat@noc.ac.uk)",
@@ -130,5 +119,5 @@ out_ds = set_ods26_global_attrs(
 )
 
 # Prep for export
-out_path = create_output_filename(out_ds.attrs)
+out_path = ild.output.filename_from_attrs(out_ds.attrs)
 out_ds.to_netcdf(out_path, format="NETCDF4")

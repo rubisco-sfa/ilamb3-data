@@ -7,20 +7,7 @@ import numpy as np
 import pandas as pd
 import xarray as xr
 
-from ilamb3_data import (
-    create_output_filename,
-    download_from_html,
-    gen_trackingid,
-    gen_utc_timestamp,
-    set_coord_bounds,
-    set_depth_attrs,
-    set_lat_attrs,
-    set_lon_attrs,
-    set_ods26_global_attrs,
-    set_time_attrs,
-    set_var_attrs,
-    standardize_dim_order,
-)
+import ilamb3_data as ild
 
 # DATA NOTES:
 # Climatologies:
@@ -81,17 +68,17 @@ for full_name, periods in remote_source_dict.items():
             dest.parent.mkdir(parents=True, exist_ok=True)
 
             if not dest.is_file():
-                download_from_html(url, str(dest))
+                ild.download.from_html(url, dest)
 
             local_paths.append(str(dest))
         local_source_dict.setdefault(full_name, {})[period] = local_paths
 
 # Set timestamps and tracking id
 local_source_ex = local_source_dict["temperature"]["decav"][0]
-download_stamp = gen_utc_timestamp(Path(local_source_ex).stat().st_mtime)
-creation_stamp = gen_utc_timestamp()
+download_stamp = ild.output.utc_timestamp(Path(local_source_ex).stat().st_mtime)
+creation_stamp = ild.output.utc_timestamp()
 today_stamp = datetime.now().strftime("%Y%m%d")
-tracking_id = gen_trackingid()
+tracking_id = ild.output.new_tracking_id()
 
 # --------- MAIN LOOP ----------
 for name, period_dict in local_source_dict.items():
@@ -163,7 +150,7 @@ for name, period_dict in local_source_dict.items():
             ds[std_var].attrs["units"] = "1"
         else:
             ds[std_var].attrs["units"] = "umol kg-1"
-        ds = set_var_attrs(
+        ds = ild.variable.standardize(
             ds,
             std_var,
             units=ds[std_var].attrs["units"],
@@ -183,37 +170,34 @@ for name, period_dict in local_source_dict.items():
         ds[f"{std_var}_stderr"].encoding = {"_FillValue": None}
 
         # Standardize time/coord attrs & build monthly **climatology** bounds via your helper
-        ds = set_time_attrs(
+        ds = ild.time.standardize_climatology(
             ds,
-            bounds_frequency="M",
+            bounds_frequency="MS",
+            sdate=cf.DatetimeGregorian(lbound.year, lbound.month, lbound.day),
+            edate=cf.DatetimeGregorian(2022, 1, 1),
             ref_date=ref_cf,  # reference cftime from dataset units
-            climatology=True,  # create climatology_bnds and time
-            create_new_time=False,  # use existing time values, don't re-create
-            clim_sdate=cf.DatetimeGregorian(lbound.year, lbound.month, lbound.day),
-            clim_edate=cf.DatetimeGregorian(2022, 1, 1),
         )
 
         # Lat/Lon/Depth attrs & bounds
-        ds = set_lat_attrs(ds)
-        ds = set_lon_attrs(ds)
+        ds = ild.lat.standardize(ds)
+        ds = ild.lon.standardize(ds)
         assert (ds.depth_bnds == ds.depth_bnds.isel(time=0)).all()
-        ds = set_depth_attrs(
+        ds = ild.depth.build_from_bounds(
             ds,
             bounds=ds.depth_bnds.isel(time=0).to_numpy(),
             units="meters",
             positive="down",
             long_name="depth of sea water",
         )
-        ds = set_coord_bounds(ds, "lat")
-        ds = set_coord_bounds(ds, "lon")
+        ds = ild.bounds.add_rectilinear_bounds(ds)
 
         # Order + var selection
-        ds = standardize_dim_order(ds)
+        ds = ild.output.order_dimensions(ds)
 
         # Populate attributes
         title = ds.attrs["title"].replace("_", " ").title()
         reference = ds.attrs["references"]
-        ds = set_ods26_global_attrs(
+        ds = ild.global_attrs.set_ods26(
             ds,
             aux_uncertainty_id="stderr",
             comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
@@ -253,5 +237,5 @@ for name, period_dict in local_source_dict.items():
         )
 
         # Prep for export
-        out_path = create_output_filename(ds.attrs)
+        out_path = ild.output.filename_from_attrs(ds.attrs)
         ds.to_netcdf(out_path, format="NETCDF4")

@@ -52,16 +52,15 @@ for fluxcom, cmip in fluxcom_to_cmip.items():
     # Add measures and bounds
     ds["cell_measures"] = cm
     ds[cmip].attrs["cell_measures"] = "area: cell_measures"
-    ds = ild.set_time_attrs(ds, bounds_frequency="M")
-    ds = ild.set_lat_attrs(ds)
-    ds = ild.set_lon_attrs(ds)
-    ds = ild.set_coord_bounds(ds, "lat")
-    ds = ild.set_coord_bounds(ds, "lon")
-    ds = ild.standardize_dim_order(ds)
-    tracking_id = ild.gen_trackingid()
+    ds = ild.time.standardize(ds, bounds_frequency="MS")
+    ds = ild.lat.standardize(ds)
+    ds = ild.lon.standardize(ds)
+    ds = ild.bounds.add_rectilinear_bounds(ds)
+    ds = ild.output.order_dimensions(ds)
+    tracking_id = ild.output.new_tracking_id()
 
     attrs = {key.lower(): value for key, value in ds.attrs.items()}
-    ds = ild.set_ods26_global_attrs(
+    ds = ild.global_attrs.set_ods26(
         ds,
         comment=", ".join(
             [
@@ -116,5 +115,5 @@ for fluxcom, cmip in fluxcom_to_cmip.items():
         variant_info="CMORized product prepared by ILAMB",
         version=f"v{generate_stamp.replace('-', '')}",
     )
-    out_path = ild.create_output_filename(ds.attrs)
+    out_path = ild.output.filename_from_attrs(ds.attrs)
     ds.to_netcdf(out_path, encoding={cmip: {"zlib": True}})

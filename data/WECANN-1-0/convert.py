@@ -5,20 +5,7 @@ import cftime as cf
 import numpy as np
 import xarray as xr
 
-from ilamb3_data import (
-    create_output_filename,
-    download_from_html,
-    gen_trackingid,
-    gen_utc_timestamp,
-    get_cmip6_variable_info,
-    set_coord_bounds,
-    set_lat_attrs,
-    set_lon_attrs,
-    set_ods26_global_attrs,
-    set_time_attrs,
-    set_var_attrs,
-    standardize_dim_order,
-)
+import ilamb3_data as ild
 
 # Download the data
 remote_source = "https://avdc.gsfc.nasa.gov/pub/data/project/WECANN/WECANN_v1.0.nc"
@@ -26,13 +13,13 @@ local_source = Path("_raw")
 local_source.mkdir(parents=True, exist_ok=True)
 local_source = local_source / Path(remote_source).name
 if not local_source.is_file():
-    download_from_html(remote_source, str(local_source))
+    ild.download.from_html(remote_source, local_source)
 
 # Set timestamps and tracking id
-download_stamp = gen_utc_timestamp(local_source.stat().st_mtime)
-creation_stamp = gen_utc_timestamp()
+download_stamp = ild.output.utc_timestamp(local_source.stat().st_mtime)
+creation_stamp = ild.output.utc_timestamp()
 today_stamp = datetime.now().strftime("%Y%m%d")
-tracking_id = gen_trackingid()
+tracking_id = ild.output.new_tracking_id()
 
 # Load the dataset for adjustments
 orig_ds = xr.open_dataset(local_source)
@@ -62,13 +49,13 @@ ds = xr.Dataset(data_vars=data, coords=coords)
 vars = list(renaming_dict.values())
 var_info = []
 for var in vars:
-    info = get_cmip6_variable_info(var, var)
+    info = ild.variable.lookup_cmip6(var, var)
     var_info.append(info)
 
 # Set correct attribute information for the vars
 ds.gpp.attrs["Units"] = "g m-2 day-1"
 for var, info in zip(vars, var_info):
-    ds = set_var_attrs(
+    ds = ild.variable.standardize(
         ds,
         var,
         units=info["variable_units"],
@@ -79,14 +66,13 @@ for var, info in zip(vars, var_info):
     )
 
 # Standardize the dimensions
-ds = set_time_attrs(ds, bounds_frequency="M")
-ds = set_lat_attrs(ds)
-ds = set_lon_attrs(ds)
-ds = set_coord_bounds(ds, "lat")
-ds = set_coord_bounds(ds, "lon")
+ds = ild.time.standardize(ds, bounds_frequency="MS")
+ds = ild.lat.standardize(ds)
+ds = ild.lon.standardize(ds)
+ds = ild.bounds.add_rectilinear_bounds(ds)
 
 # Order + var selection
-ds = standardize_dim_order(ds)
+ds = ild.output.order_dimensions(ds)
 
 # Set global attributes and export
 for var in vars:
@@ -99,7 +85,7 @@ for var in vars:
     out_ds = ds.drop_vars(to_drop)
 
     # Set global attributes
-    out_df = set_ods26_global_attrs(
+    out_df = ild.global_attrs.set_ods26(
         out_ds,
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary",
         contact="Hamed Alemohammad (halemohammad@clarku.edu)",
@@ -135,7 +121,7 @@ for var in vars:
         version=f"v{today_stamp}",
     )
 
-    out_path = create_output_filename(out_ds.attrs)
+    out_path = ild.output.filename_from_attrs(out_ds.attrs)
     out_ds.to_netcdf(out_path)
 
     print(f"Exported to {out_path}")

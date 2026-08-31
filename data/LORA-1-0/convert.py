@@ -4,20 +4,7 @@ from pathlib import Path
 import numpy as np
 import xarray as xr
 
-from ilamb3_data import (
-    create_output_filename,
-    download_from_html,
-    gen_trackingid,
-    gen_utc_timestamp,
-    get_cmip6_variable_info,
-    set_coord_bounds,
-    set_lat_attrs,
-    set_lon_attrs,
-    set_ods26_global_attrs,
-    set_time_attrs,
-    set_var_attrs,
-    standardize_dim_order,
-)
+import ilamb3_data as ild
 
 # Download the data
 remote_sources = [
@@ -30,24 +17,24 @@ for remote_source in remote_sources:
     local_source.mkdir(parents=True, exist_ok=True)
     source = local_source / Path(remote_source).name
     if not source.is_file():
-        download_from_html(remote_source, str(source))
+        ild.download.from_html(remote_source, source)
     local_sources.append(source)
 
 # Set timestamps and tracking id
-download_stamp = gen_utc_timestamp(local_sources[0].stat().st_mtime)
-creation_stamp = gen_utc_timestamp()
+download_stamp = ild.output.utc_timestamp(local_sources[0].stat().st_mtime)
+creation_stamp = ild.output.utc_timestamp()
 today_stamp = datetime.now().strftime("%Y%m%d")
-tracking_id = gen_trackingid()
+tracking_id = ild.output.new_tracking_id()
 
 # Load the dataset for adjustments
 time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
 ds = xr.open_mfdataset(local_sources, engine="netcdf4", decode_times=time_coder)
 
 # Get attribute info for mrro
-mrro_info = get_cmip6_variable_info("mrro", "mrro")
+mrro_info = ild.variable.lookup_cmip6("mrro", "mrro")
 
 # Set correct attribute information for the vars
-ds = set_var_attrs(
+ds = ild.variable.standardize(
     ds,
     "mrro",
     units=mrro_info["variable_units"],
@@ -70,15 +57,14 @@ ds.mrro_sd.encoding = {
 }
 
 # Clean up attrs
-ds = set_time_attrs(ds, bounds_frequency="M")
-ds = set_lat_attrs(ds)
-ds = set_lon_attrs(ds)
-ds = set_coord_bounds(ds, "lat")
-ds = set_coord_bounds(ds, "lon")
-ds = standardize_dim_order(ds)
+ds = ild.time.standardize(ds, bounds_frequency="MS")
+ds = ild.lat.standardize(ds)
+ds = ild.lon.standardize(ds)
+ds = ild.bounds.add_rectilinear_bounds(ds)
+ds = ild.output.order_dimensions(ds)
 
 # Set global attributes and export
-out_ds = set_ods26_global_attrs(
+out_ds = ild.global_attrs.set_ods26(
     ds,
     aux_uncertainty_id="sd",
     comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
@@ -132,5 +118,5 @@ for var, da in ds_chunked.data_vars.items():
     encoding[var] = encoding_copy
 
 # Prep for export
-out_path = create_output_filename(ds_chunked.attrs)
+out_path = ild.output.filename_from_attrs(ds_chunked.attrs)
 ds_chunked.to_netcdf(out_path, encoding=encoding, format="NETCDF4")

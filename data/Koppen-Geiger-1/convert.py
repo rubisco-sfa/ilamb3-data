@@ -6,16 +6,7 @@ from zipfile import ZipFile
 import numpy as np
 import xarray as xr
 
-from ilamb3_data import (
-    create_output_filename,
-    download_from_figshare,
-    gen_trackingid,
-    set_coord_bounds,
-    set_lat_attrs,
-    set_lon_attrs,
-    set_regions_global_attrs,
-    set_var_attrs,
-)
+import ilamb3_data as ild
 
 FIGSHARE_ARTICLE_ID = "6396959"
 VAR_IDS = ["koppen", "koppenagg5"]
@@ -116,7 +107,7 @@ def aggregate_regions(
 ########################################################################################
 # Download and unzip figshare data
 
-raw_files = download_from_figshare(FIGSHARE_ARTICLE_ID)
+raw_files = ild.download.from_figshare(FIGSHARE_ARTICLE_ID)
 for raw in raw_files:
     if raw.suffix != ".zip":
         continue
@@ -189,12 +180,11 @@ for VAR_ID in VAR_IDS:
 
     # Store the selected aggregation as a categorical data variable.
     ds = region_ids.to_dataset(name=VAR_ID)
-    ds = set_coord_bounds(ds, "lat")
-    ds = set_coord_bounds(ds, "lon")
-    ds = set_lat_attrs(ds)
-    ds = set_lon_attrs(ds)
+    ds = ild.bounds.add_rectilinear_bounds(ds)
+    ds = ild.lat.standardize(ds)
+    ds = ild.lon.standardize(ds)
 
-    ds = set_var_attrs(
+    ds = ild.variable.standardize(
         ds,
         VAR_ID,
         units="",
@@ -212,7 +202,7 @@ for VAR_ID in VAR_IDS:
     )
 
     # Set global attributes
-    out_ds = set_regions_global_attrs(
+    out_ds = ild.global_attrs.set_regions(
         ds,
         activity_id="ILAMB",
         comment=(f"Categorical map containing {len(groups)} region unit(s)."),
@@ -239,12 +229,12 @@ for VAR_ID in VAR_IDS:
         source_id="Koppen-Geiger-1",
         source_version_number="v1",
         title=attrs[VAR_ID]["long_name"],
-        tracking_id=gen_trackingid(),
+        tracking_id=ild.output.new_tracking_id(),
         variable_id=VAR_ID,
         variant_label="ILAMB",
         version=f"v{datetime.today().strftime('%Y%m%d')}",
     )
 
     # Prep for export
-    out_path = create_output_filename(out_ds.attrs)
+    out_path = ild.output.filename_from_attrs(out_ds.attrs)
     out_ds.to_netcdf(out_path, format="NETCDF4")

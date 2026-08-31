@@ -8,16 +8,7 @@ import cftime as cf
 import numpy as np
 import xarray as xr
 
-from ilamb3_data import (
-    create_output_filename,
-    download_from_html,
-    gen_trackingid,
-    gen_utc_timestamp,
-    get_cmip6_variable_info,
-    set_ods26_global_attrs,
-    set_time_attrs,
-    set_var_attrs,
-)
+import ilamb3_data as ild
 
 VARS = ["nbp", "fgco2"]
 UNC = "95pci"
@@ -29,25 +20,25 @@ local_source = Path("_raw")
 local_source.mkdir(parents=True, exist_ok=True)
 local_source = local_source / Path(remote_source).name
 if not local_source.is_file():
-    download_from_html(remote_source, str(local_source))
+    ild.download.from_html(remote_source, local_source)
 
 # Set timestamps and tracking id
-download_stamp = gen_utc_timestamp(local_source.stat().st_mtime)
-creation_stamp = gen_utc_timestamp()
+download_stamp = ild.output.utc_timestamp(local_source.stat().st_mtime)
+creation_stamp = ild.output.utc_timestamp()
 today_stamp = datetime.now().strftime("%Y%m%d")
-tracking_id = gen_trackingid()
+tracking_id = ild.output.new_tracking_id()
 
 # Load the dataset for adjustments
 time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
 ds = xr.open_dataset(local_source, decode_times=time_coder)
-ds = set_time_attrs(ds, bounds_frequency="Y", ref_date=cf.DatetimeNoLeap(1850, 1, 1))
+ds = ild.time.standardize(ds, bounds_frequency="YS", ref_date=cf.DatetimeNoLeap(1850, 1, 1))
 
 for var in VARS:
     # Get attribute info for fgco2 and nbp
-    var_info = get_cmip6_variable_info(var, var)
+    var_info = ild.variable.lookup_cmip6(var, var)
 
     # Set correct attribute information for the vars
-    ds = set_var_attrs(
+    ds = ild.variable.standardize(
         ds,
         var,
         units=var_info["variable_units"],
@@ -77,7 +68,7 @@ ds["fgco2"].attrs.pop("bounds", None)
 for var in VARS:
     # Create one ds per variable
     out_ds = ds.drop_vars([v for v in ds if (var not in v and "time" not in v)])
-    out_ds["time"].encoding = {"_FillValue": None}
+    out_ds["time"].encoding["_FillValue"] = None
 
     # Define varibable-dependant attributes
     dynamic_attrs = {
@@ -88,7 +79,7 @@ for var in VARS:
     }
 
     # Set global attributes
-    out_ds = set_ods26_global_attrs(
+    out_ds = ild.global_attrs.set_ods26(
         out_ds,
         aux_uncertainty_id=UNC,
         comment="Not yet obs4MIPs compliant: 'version' attribute is temporary; source_id not in obs4MIPs yet",
@@ -127,7 +118,7 @@ for var in VARS:
         version=f"v{today_stamp}",
     )
 
-    out_path = create_output_filename(out_ds.attrs)
+    out_path = ild.output.filename_from_attrs(out_ds.attrs)
     encoding = {name: out_ds[name].encoding.copy() for name in out_ds.variables}
     out_ds.to_netcdf(out_path, encoding=encoding, format="NETCDF4")
 

@@ -7,16 +7,7 @@ import xarray as xr
 from rasterio.features import rasterize
 from rasterio.transform import from_bounds
 
-from ilamb3_data import (
-    create_output_filename,
-    download_from_arcgis_rest,
-    gen_trackingid,
-    set_coord_bounds,
-    set_lat_attrs,
-    set_lon_attrs,
-    set_regions_global_attrs,
-    set_var_attrs,
-)
+import ilamb3_data as ild
 
 ########################################################################################
 # Pre-define some information for the different HUC2 aggregation schemes
@@ -99,7 +90,7 @@ remote_source = (
 )
 local_source = Path("_raw/WBD_HUC02.geojson")
 
-local_source = download_from_arcgis_rest(
+local_source = ild.download.from_arcgis_rest(
     remote_source,
     local_source,
     where=[f"HUC2='{region:02d}'" for region in range(1, 23)],
@@ -221,12 +212,11 @@ for VAR_ID in VAR_IDS:
 
     # Store the selected aggregation as a categorical data variable.
     ds = region_ids.to_dataset(name=VAR_ID)
-    ds = set_coord_bounds(ds, "lat")
-    ds = set_coord_bounds(ds, "lon")
-    ds = set_lat_attrs(ds)
-    ds = set_lon_attrs(ds)
+    ds = ild.bounds.add_rectilinear_bounds(ds)
+    ds = ild.lat.standardize(ds)
+    ds = ild.lon.standardize(ds)
 
-    ds = set_var_attrs(
+    ds = ild.variable.standardize(
         ds,
         VAR_ID,
         units="",
@@ -244,7 +234,7 @@ for VAR_ID in VAR_IDS:
     )
 
     # Set global attributes
-    out_ds = set_regions_global_attrs(
+    out_ds = ild.global_attrs.set_regions(
         ds,
         activity_id="ILAMB",
         comment=(f"Categorical map containing {len(groups)} region unit(s)."),
@@ -274,12 +264,12 @@ for VAR_ID in VAR_IDS:
         source_id="WBD-HUC02-2024",
         source_version_number="2024",
         title=attrs[VAR_ID]["long_name"],
-        tracking_id=gen_trackingid(),
+        tracking_id=ild.output.new_tracking_id(),
         variable_id=VAR_ID,
         variant_label="ILAMB",
         version=f"v{datetime.today().strftime('%Y%m%d')}",
     )
 
     # Prep for export
-    out_path = create_output_filename(out_ds.attrs)
+    out_path = ild.output.filename_from_attrs(out_ds.attrs)
     out_ds.to_netcdf(out_path, format="NETCDF4")

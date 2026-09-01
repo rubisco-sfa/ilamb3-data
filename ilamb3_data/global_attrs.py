@@ -9,6 +9,7 @@ def _load_json_from_url(url):
     with urllib.request.urlopen(url) as response:
         return json.load(response)
 
+
 def set_cf(
     ds: xr.Dataset,
     *,  # keyword only for the following args
@@ -58,6 +59,7 @@ def set_cf(
 
     ds.attrs.update(attrs)
     return ds
+
 
 def set_ods26(
     ds: xr.Dataset,
@@ -264,6 +266,7 @@ def set_ods26(
     ds.attrs = attrs
     return ds
 
+
 def set_regions(
     ds: xr.Dataset,
     creation_date: str,
@@ -383,3 +386,22 @@ def set_regions(
     # Set the attrs
     ds.attrs = attrs
     return ds
+
+
+# To-Do: We may want to create an ILAMB global attributes function that is very similar
+# to ODS but is more relaxed or has different standards
+# --------------------------------------------------------------------------------------
+#    - variant_label : I think these should be more descriptive than ODS defines; e.g.,
+#        WangMao-2021 uses two different methods to derive the same variable, and just
+#        calling it essentially "variant 1", "variant 2", etc. isn't very helpful when
+#        browsing by file name
+#    - variant_info : Obviously we would want to be descriptive about what the variant
+#        is, which this already does
+#    - aux_uncertainty_id : I think these should be more descriptive than ODS defines;
+#        we could accept specific measures like "standard_error", "confidence_interval",
+#        etc., but maintain some CVs of these
+#    - aux_uncertainty_info : Include a description of how uncertainty is calculated
+#    - input_sources : Maybe a list of all the source_ids that were used to create
+#        the dataset, especially if they are in ILAMB registries; useful for being
+#        careful about interpreting benchmarks
+#    - drop tracking_id if we don't need it

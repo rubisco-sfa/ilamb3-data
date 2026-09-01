@@ -69,6 +69,14 @@ for path in input_netcdfs:
     # Look up the variable in the CMIP6 variable table
     var_info = ild.variable.lookup_cmip6(var, var)
 
+    # Set compression levels for variables
+    compression = {
+        "zlib": True,
+        "complevel": 4,
+        "shuffle": True,
+        "chunksizes": (6, 1, 180, 360),
+    }
+
     # Format the variable attributes
     ds = ild.variable.standardize(
         ds,
@@ -79,6 +87,7 @@ for path in input_netcdfs:
         ancillary_variables=f"{var}_sd",
         target_dtype="float32",
         convert=False,  # Ignores what is set as `units=` and retains original
+        compression=compression,
     )
 
     # Format the ancillary var attrs
@@ -93,6 +102,7 @@ for path in input_netcdfs:
         extra_attrs={
             "comment": per_netcdf_attrs[method]["uncert_comment"],
         },
+        compression=compression,
     )
 
     # Set the global attrs

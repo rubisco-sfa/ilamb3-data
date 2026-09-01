@@ -2,13 +2,14 @@ import xarray as xr
 
 import ilamb3_data as ild
 
+# Variable of interest
 var = "mrsol"
 
+# Download
 urls = [
     "https://drive.google.com/file/d/1-UZ7FEHbqoAXHq6Wa3b5zme8vPeX02kf/view?usp=drive_link",
     "https://drive.google.com/file/d/1-0Ze2XfDWyOqgxpetQqf5HeVxDxX_y7_/view?usp=drive_link",
 ]
-
 input_netcdfs = ild.download.from_google_drive(urls)
 download_stamp = ild.output.utc_timestamp(input_netcdfs[0].stat().st_mtime)
 
@@ -16,29 +17,17 @@ download_stamp = ild.output.utc_timestamp(input_netcdfs[0].stat().st_mtime)
 per_netcdf_attrs = {
     "olc_ors": {
         "source": "optimal linear combination technique of (Hobeichi, 2018)",
-        "uncert_long_name": (
-            "Estimated standard deviation of optimal-linear-combination volumetric "
-            "soil moisture"
-        ),
-        "uncert_comment": (
-            "Calculated from the adjusted source soil moisture datasets and adjusted "
-            "optimal-linear-combination weights"
-        ),
+        "uncert_long_name": "Estimated standard deviation of optimal-linear-combination volumetric soil moisture",
+        "uncert_comment": "Calculated from the adjusted source soil moisture datasets and adjusted optimal-linear-combination weights",
     },
     "ec_ors": {
         "source": "emergent constraint technique of (Mystakidis, 2016)",
-        "uncert_long_name": (
-            "Estimated standard deviation of emergent-constraint volumetric soil moisture"
-        ),
-        "uncert_comment": (
-            "Regression prediction standard deviation where a significant "
-            "emergent-constraint relationship exists; otherwise, the "
-            "standard deviation across source soil moisture datasets."
-        ),
+        "uncert_long_name": "Estimated standard deviation of emergent-constraint volumetric soil moisture",
+        "uncert_comment": "Regression prediction standard deviation where a significant emergent-constraint relationship exists; otherwise, the standard deviation across source soil moisture datasets.",
     },
 }
 
-# Open dataset and rename variabel to match CMIP5/6 naming conventions
+# Open dataset and rename variable to match CMIP5/6 naming conventions
 for path in input_netcdfs:
     netcdf = next(path.rglob("*.nc"))
     method = netcdf.stem  # Indicates OLC method or EC method
@@ -118,7 +107,7 @@ for path in input_netcdfs:
         grid="0.5x0.5 degree latitude x longitude",
         grid_label="gn",
         has_aux_unc="TRUE",
-        history=f"Downloaded from {urls[0]} and {urls[1]} on {download_stamp}. Converted to CF-compliant and ODS-aligned product by ILAMB on {ild.output.utc_timestamp()}.",
+        history=f"Downloaded from {urls[0]} and {urls[1]} on {download_stamp}. Converted to CF-compliant and ODS-aligned product by ILAMB on {ild.output.utc_timestamp()}. Converted units from volumetric soil moisture to kg m-2 by multiplying by the thickness of the soil layer and the density of water.",
         institution="Oak Ridge National Laboratory, TN, USA",  # this is mispelled as "Oakridge" on obs4mip-cmor-tables
         institution_id="ORNL",
         license="Creative Commons Attribution 4.0 International License (CC BY 4.0)",

@@ -395,6 +395,7 @@ def set_regions(
 #        WangMao-2021 uses two different methods to derive the same variable, and just
 #        calling it essentially "variant 1", "variant 2", etc. isn't very helpful when
 #        browsing by file name
+#            - This should also definitely be optional and doesn't need to be provided
 #    - variant_info : Obviously we would want to be descriptive about what the variant
 #        is, which this already does
 #    - aux_uncertainty_id : I think these should be more descriptive than ODS defines;
@@ -405,3 +406,6 @@ def set_regions(
 #        the dataset, especially if they are in ILAMB registries; useful for being
 #        careful about interpreting benchmarks
 #    - drop tracking_id if we don't need it
+#    - drop redundant data_specs_version (Conventions carries that, and it's less
+#        ambiguous)
+#    - activity_id should have activity_info or something to describe the activity

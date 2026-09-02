@@ -35,7 +35,7 @@ def utc_timestamp(time: float | None = None) -> str:
     if time is None:
         time = datetime.datetime.now(datetime.UTC)
     else:
-        time = datetime.datetime.fromtimestamp(time)
+        time = datetime.datetime.fromtimestamp(time, datetime.UTC)
     return time.strftime("%Y-%m-%dT%H:%M:%SZ")
 
 def new_tracking_id() -> str:

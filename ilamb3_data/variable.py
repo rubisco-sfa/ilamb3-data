@@ -109,7 +109,7 @@ def standardize(
     var: str,
     *,
     units: str,
-    standard_name: str,
+    standard_name: str | None,
     long_name: str,
     ancillary_variables: str | None = None,
     cell_methods: str | None = None,
@@ -135,9 +135,9 @@ def standardize(
         The name of the variable in the dataset to update.
     units : str
         The desired CF-compliant units for the variable (e.g., "kg m-2 s-1").
-    standard_name : str
-        The CF standard_name for the variable (e.g., "surface_air_pressure"). Ideally,
-        users should choose a CMIP6 or MIP standard_name if possible.
+    standard_name : str, optional
+        The CF standard name for the variable. Use None when no applicable CF
+        standard name exists.
     long_name : str
         A descriptive long name for the variable. The long_name should be
         CMIP6/MIP-compliant if possible.
@@ -236,11 +236,9 @@ def standardize(
     if not clean_long_name:
         raise ValueError("long_name cannot be empty.")
     # create CF attrs
-    attrs = {
-        "units": effective_units,
-        "standard_name": standard_name,
-        "long_name": clean_long_name,
-    }
+    attrs = {"units": effective_units, "long_name": clean_long_name}
+    if standard_name is not None:
+        attrs["standard_name"] = standard_name
 
     # assign other variables attr if needed
     if ancillary_variables is not None:

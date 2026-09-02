@@ -9,6 +9,7 @@ from __future__ import annotations
 import fnmatch
 import inspect
 import json
+import math
 import warnings
 import zipfile
 from collections.abc import Mapping
@@ -17,9 +18,15 @@ from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 from xml.etree import ElementTree
 
+import numpy as np
+import rasterio
 import requests
 import s3fs
 from bs4 import BeautifulSoup
+from rasterio.enums import Resampling
+from rasterio.transform import from_origin
+from rasterio.warp import reproject
+from rasterio.windows import Window, transform as window_transform
 from tqdm.auto import tqdm
 
 CHUNK_SIZE = 2**20
@@ -217,6 +224,322 @@ def from_html(
     )
 
 
+def from_wcs(
+    source: str,
+    coverage: str,
+    resolution: float,
+    destination: Path | str | None = None,
+    *,
+    map_file: str | None = None,
+    bbox: tuple[float, float, float, float] = (-180, -90, 180, 90),
+    crs: str = "EPSG:4326",
+    interpolation: str = "NEAREST",
+    output_format: str = "GEOTIFF_INT16",
+    timeout: float = 900,
+    show_progress: bool = True,
+) -> Path:
+    """Download a regularly gridded coverage from a WCS 1.0 service.
+
+    Parameters
+    ----------
+    source : str
+        URL of the WCS endpoint.
+    coverage : str
+        Coverage identifier to request.
+    resolution : float
+        Requested output pixel size in the units of ``crs``.
+    destination : Path or str, optional
+        Output file. If omitted, the coverage is saved in ``_raw`` beside the
+        calling script.
+    map_file : str, optional
+        MapServer map-file parameter, when required by the endpoint.
+    bbox : tuple of float, default: (-180, -90, 180, 90)
+        Output bounds ordered as xmin, ymin, xmax, ymax.
+    crs : str, default: "EPSG:4326"
+        Output coordinate reference system.
+    interpolation : str, default: "NEAREST"
+        Server-side interpolation method.
+    output_format : str, default: "GEOTIFF_INT16"
+        WCS output format.
+    timeout : float, default: 900
+        HTTP request timeout in seconds.
+    show_progress : bool, default: True
+        Show byte-level download progress with tqdm.
+
+    Returns
+    -------
+    Path
+        Path to the downloaded coverage.
+    """
+    # Validate the requested grid.
+    if resolution <= 0:
+        raise ValueError("resolution must be positive")
+    xmin, ymin, xmax, ymax = bbox
+    if xmax <= xmin or ymax <= ymin:
+        raise ValueError("bbox must have positive width and height")
+    width = round((xmax - xmin) / resolution)
+    height = round((ymax - ymin) / resolution)
+    if not (
+        math.isclose(width * resolution, xmax - xmin, rel_tol=0, abs_tol=1e-9)
+        and math.isclose(
+            height * resolution,
+            ymax - ymin,
+            rel_tol=0,
+            abs_tol=1e-9,
+        )
+    ):
+        raise ValueError("resolution must divide the bbox width and height exactly")
+
+    # Construct the WCS GetCoverage request.
+    parameters = {
+        "SERVICE": "WCS",
+        "VERSION": "1.0.0",
+        "REQUEST": "GetCoverage",
+        "COVERAGE": coverage,
+        "FORMAT": output_format,
+        "CRS": crs,
+        "BBOX": ",".join(str(value) for value in bbox),
+        "WIDTH": width,
+        "HEIGHT": height,
+        "INTERPOLATION": interpolation,
+    }
+    if map_file is not None:
+        parameters["map"] = map_file
+    request = requests.Request("GET", source, params=parameters).prepare()
+    if request.url is None:
+        raise ValueError("Could not construct the WCS request URL")
+
+    # Stream the coverage into the caller's raw-data directory.
+    output = (
+        _default_destination() / f"{_safe_name(coverage)}.tif"
+        if destination is None
+        else Path(destination)
+    )
+    return _download_http(
+        request.url,
+        output,
+        timeout=timeout,
+        show_progress=show_progress,
+    )
+
+
+def from_raster(
+    source: str,
+    resolution: float,
+    destination: Path | str | None = None,
+    *,
+    dtype: str,
+    nodata: float | None = None,
+    bbox: tuple[float, float, float, float] = (-180, -90, 180, 90),
+    crs: str = "EPSG:4326",
+    resampling: str = "average",
+    block_size: int = 32,
+    timeout: float = 900,
+    show_progress: bool = True,
+) -> Path:
+    """Read a remote raster and save a reprojected, regularly gridded GeoTIFF.
+
+    This is intended for cloud-hosted rasters and VRTs whose source pixels are
+    fetched on demand. Progress is measured in completed output rows, so the
+    displayed rate and ETA include both remote reads and reprojection. Source
+    nodata is passed to GDAL and excluded from interpolated values.
+
+    Parameters
+    ----------
+    source : str
+        Raster URL or local path. Remote VRTs are supported by rasterio/GDAL.
+    resolution : float
+        Output pixel size in the units of ``crs``.
+    destination : Path or str, optional
+        Output GeoTIFF. If omitted, it is saved in ``_raw`` beside the calling
+        script with ``_regridded`` appended to the source name.
+    dtype : str
+        Output NumPy/rasterio data type, such as ``"float32"`` or ``"int16"``.
+    nodata : float or int, optional
+        Output nodata value. By default, floating-point outputs use NaN; integer
+        outputs use the source nodata value when it fits, or the dtype minimum.
+    bbox : tuple of float, default: (-180, -90, 180, 90)
+        Output bounds ordered as xmin, ymin, xmax, ymax.
+    crs : str, default: "EPSG:4326"
+        Output coordinate reference system.
+    resampling : str, default: "average"
+        A rasterio ``Resampling`` method name.
+    block_size : int, default: 32
+        Width and height of each output window. Smaller windows reduce peak memory
+        and provide finer progress reporting but increase remote-read overhead.
+    timeout : float, default: 900
+        GDAL HTTP connection and request timeout in seconds.
+    show_progress : bool, default: True
+        Show output-row progress, elapsed time, and estimated time remaining.
+
+    Returns
+    -------
+    Path
+        Path to the local reprojected GeoTIFF.
+    """
+    # Validate the source, grid, and block-size arguments
+    if not isinstance(source, str):
+        raise TypeError(f"source must be a str, not {type(source).__name__}")
+    if resolution <= 0:
+        raise ValueError("resolution must be positive")
+    if block_size <= 0:
+        raise ValueError("block_size must be positive")
+    xmin, ymin, xmax, ymax = bbox
+    if xmax <= xmin or ymax <= ymin:
+        raise ValueError("bbox must have positive width and height")
+
+    # Resolve and validate the requested output data type
+    if not isinstance(dtype, str):
+        raise TypeError(f"dtype must be a str, not {type(dtype).__name__}")
+    try:
+        output_dtype = np.dtype(dtype)
+    except TypeError as error:
+        raise ValueError(f"Unsupported output dtype: {dtype!r}") from error
+    if output_dtype.kind not in "iuf" or not rasterio.dtypes.check_dtype(  # type: ignore
+        output_dtype.name
+    ):
+        raise ValueError(f"Unsupported output dtype: {dtype!r}")
+
+    # Calculate the exact dimensions of the requested output grid
+    width = round((xmax - xmin) / resolution)
+    height = round((ymax - ymin) / resolution)
+    if not (
+        math.isclose(width * resolution, xmax - xmin, rel_tol=0, abs_tol=1e-9)
+        and math.isclose(
+            height * resolution,
+            ymax - ymin,
+            rel_tol=0,
+            abs_tol=1e-9,
+        )
+    ):
+        raise ValueError("resolution must divide the bbox width and height exactly")
+
+    # Convert the resampling method name to rasterio's enum
+    try:
+        method = Resampling[resampling]
+    except KeyError as error:
+        choices = ", ".join(item.name for item in Resampling)
+        raise ValueError(f"resampling must be one of: {choices}") from error
+
+    # Reuse an existing result or prepare an atomic partial output
+    source_name = _safe_name(urlparse(source).path or source)
+    output = (
+        _default_destination() / f"{Path(source_name).stem}_regridded.tif"
+        if destination is None
+        else Path(destination)
+    )
+    if output.is_file():
+        _reuse(output)
+        return output
+
+    output.parent.mkdir(parents=True, exist_ok=True)
+    partial = output.with_name(f".{output.name}.part")
+    transform = from_origin(xmin, ymax, resolution, resolution)
+
+    # Configure GDAL for direct HTTP reads without scanning remote directories
+    env_options = {
+        "GDAL_DISABLE_READDIR_ON_OPEN": "EMPTY_DIR",
+        "GDAL_HTTP_CONNECTTIMEOUT": str(timeout),
+        "GDAL_HTTP_TIMEOUT": str(timeout),
+    }
+
+    try:
+        # Display activity before rasterio begins opening the remote dataset
+        with tqdm(
+            total=width * height,
+            desc=output.name,
+            unit="pixel",
+            unit_scale=True,
+            disable=not show_progress,
+        ) as progress:
+            progress.set_postfix_str("connecting to remote raster", refresh=True)
+
+            # Open the source and derive a suitable destination nodata value
+            with rasterio.Env(**env_options), rasterio.open(source) as raster:
+                progress.set_postfix_str("downloading and regridding", refresh=True)
+                if raster.count != 1:
+                    raise ValueError("source raster must contain exactly one band")
+                if raster.nodata is None:
+                    warnings.warn(
+                        "Source raster has no nodata value; all source pixels will be "
+                        "included in interpolation",
+                        UserWarning,
+                        stacklevel=2,
+                    )
+                destination_nodata = nodata
+                if destination_nodata is None:
+                    if np.issubdtype(output_dtype, np.floating):
+                        destination_nodata = np.nan
+                    elif raster.nodata is not None and (
+                        np.iinfo(output_dtype).min
+                        <= raster.nodata
+                        <= np.iinfo(output_dtype).max
+                    ):
+                        destination_nodata = raster.nodata
+                    else:
+                        destination_nodata = np.iinfo(output_dtype).min
+
+                # Define a compressed, tiled GeoTIFF on the target grid
+                profile = {
+                    "driver": "GTiff",
+                    "dtype": output_dtype.name,
+                    "count": 1,
+                    "width": width,
+                    "height": height,
+                    "crs": crs,
+                    "transform": transform,
+                    "nodata": destination_nodata,
+                    "compress": "deflate",
+                    "predictor": (
+                        3 if np.issubdtype(output_dtype, np.floating) else 2
+                    ),
+                    "tiled": True,
+                    "blockxsize": 256,
+                    "blockysize": 256,
+                }
+
+                # Reproject bounded tiles and stream them into the local file
+                with rasterio.open(partial, "w", **profile) as destination_raster:
+                    for row in range(0, height, block_size):
+                        rows = min(block_size, height - row)
+                        for column in range(0, width, block_size):
+                            columns = min(block_size, width - column)
+                            window = Window(column, row, columns, rows)
+                            data = np.full(
+                                (rows, columns),
+                                destination_nodata,
+                                dtype=output_dtype,
+                            )
+                            reproject(
+                                source=rasterio.band(raster, 1),
+                                destination=data,
+                                src_transform=raster.transform,
+                                src_crs=raster.crs,
+                                src_nodata=raster.nodata,
+                                dst_transform=window_transform(window, transform),
+                                dst_crs=crs,
+                                dst_nodata=destination_nodata,
+                                resampling=method,
+                                init_dest_nodata=True,
+                                UNIFIED_SRC_NODATA="YES",
+                                OVR="NONE",
+                            )
+                            destination_raster.write(
+                                data,
+                                1,
+                                window=window,
+                            )
+                            progress.update(rows * columns)
+
+        # Publish the completed output only after every row succeeds.
+        partial.replace(output)
+    except BaseException:
+        # Remove incomplete output while preserving any previous final file.
+        partial.unlink(missing_ok=True)
+        raise
+    return output
+
+
 def from_thredds(
     source: str,
     destination: Path | str | None = None,
@@ -265,8 +588,7 @@ def from_thredds(
         catalog_path = f"{path.rsplit('/', maxsplit=1)[0]}/catalog.xml"
     else:
         raise ValueError(
-            "source must be a THREDDS catalog URL or a catalog/fileServer "
-            "directory URL"
+            "source must be a THREDDS catalog URL or a catalog/fileServer directory URL"
         )
     catalog_url = parsed._replace(
         path=catalog_path,
@@ -612,7 +934,9 @@ __all__ = [
     "from_arcgis_rest",
     "from_figshare",
     "from_html",
+    "from_raster",
     "from_s3",
     "from_thredds",
+    "from_wcs",
     "from_zenodo",
 ]

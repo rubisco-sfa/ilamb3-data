@@ -9,14 +9,16 @@ from __future__ import annotations
 import fnmatch
 import inspect
 import json
+import os
 import warnings
 import zipfile
-from collections.abc import Mapping
+from collections.abc import Mapping, Sequence
 from pathlib import Path
 from typing import Any
 from urllib.parse import unquote, urljoin, urlparse
 from xml.etree import ElementTree
 
+import gdown
 import requests
 import s3fs
 from bs4 import BeautifulSoup
@@ -215,6 +217,141 @@ def from_html(
         timeout=timeout,
         show_progress=show_progress,
     )
+
+
+def from_google_drive(
+    source: str | Sequence[str],
+    destination: Path | str | None = None,
+    *,
+    pattern: str = "*",
+    show_progress: bool = True,
+) -> list[Path]:
+    """Find and download matching files from Google Drive.
+
+    Parameters
+    ----------
+    source : str or sequence of str
+        A public Google Drive file or folder URL, or a sequence of such URLs.
+        Folder URLs are searched recursively.
+    destination : Path or str, optional
+        Directory in which matching files are saved. If omitted, files are saved
+        in ``_raw`` beside the calling Python script.
+    pattern : str, default: "*"
+        Shell-style remote filename pattern, such as ``"CLASS_v1-1_*.nc"``.
+    show_progress : bool, default: True
+        Show byte-level download progress with gdown.
+
+    Returns
+    -------
+    list of Path
+        Local paths corresponding to every matched Google Drive file. Zip files
+        are extracted and represented by their extraction directories.
+
+    Notes
+    -----
+    Files must be shared publicly as "Anyone with the link". Google Drive folder
+    contents are flattened into ``destination``, matching the behavior of the
+    other provider download functions. ``pattern`` is applied to Drive filenames
+    before zip extraction, not to files contained inside an archive. Matching
+    local files are reused before Google Drive is queried when they constitute a
+    complete direct-file result or a cached result for a single folder URL.
+    """
+    if isinstance(source, str):
+        sources = [source]
+    elif isinstance(source, Sequence):
+        sources = list(source)
+        if not all(isinstance(item, str) for item in sources):
+            raise TypeError("every source must be a str")
+    else:
+        raise TypeError(
+            f"source must be a str or sequence of str, not {type(source).__name__}"
+        )
+    if not sources:
+        raise ValueError("source must contain at least one Google Drive URL")
+
+    output_dir = _default_destination() if destination is None else Path(destination)
+    output_dir.mkdir(parents=True, exist_ok=True)
+    directory_output = str(output_dir) + os.sep
+
+    # Reuse a complete-looking local result before asking Drive for metadata. A
+    # direct Drive URL does not contain its remote filename, so for direct-file
+    # sources the number of matches must equal the number of URLs. For a single
+    # folder URL, matching local files are treated as the cached folder result.
+    local_files = sorted(
+        path
+        for path in output_dir.iterdir()
+        if path.is_file()
+        and not path.name.startswith(".")
+        and fnmatch.fnmatch(path.name, pattern)
+    )
+    folder_sources = [url for url in sources if "/folders/" in urlparse(url).path]
+    local_cache_is_complete = bool(local_files) and (
+        (not folder_sources and len(local_files) == len(sources))
+        or (len(sources) == 1 and len(folder_sources) == 1)
+    )
+    if local_cache_is_complete:
+        for path in local_files:
+            _reuse(path)
+        return [
+            _extract_zip(path) if zipfile.is_zipfile(path) else path
+            for path in local_files
+        ]
+
+    # Resolve real Drive filenames before downloading so unwanted files can be
+    # filtered out. Folder metadata includes files in descendant folders.
+    remote_files: list[tuple[str, str]] = []
+    seen_ids: set[str] = set()
+    for url in sources:
+        if "/folders/" in urlparse(url).path:
+            file_infos = gdown.download_folder(
+                url=url,
+                output=directory_output,
+                quiet=True,
+                skip_download=True,
+            )
+        else:
+            file_infos = [
+                gdown.download(
+                    url=url,
+                    output=directory_output,
+                    quiet=True,
+                    skip_download=True,
+                )
+            ]
+        for file_info in file_infos:
+            file_id = file_info.id
+            name = _safe_name(file_info.path)
+            if file_id not in seen_ids and name and fnmatch.fnmatch(name, pattern):
+                remote_files.append((file_id, name))
+                seen_ids.add(file_id)
+
+    if not remote_files:
+        raise FileNotFoundError(
+            f"No Google Drive files matching {pattern!r} found at {sources!r}"
+        )
+
+    names: set[str] = set()
+    for _, name in remote_files:
+        if name in names:
+            raise ValueError(
+                f"Multiple Google Drive files would be saved as {name!r}"
+            )
+        names.add(name)
+
+    outputs: list[Path] = []
+    for file_id, name in remote_files:
+        output = output_dir / name
+        if output.is_file():
+            _reuse(output)
+        else:
+            gdown.download(
+                id=file_id,
+                output=str(output),
+                quiet=not show_progress,
+                resume=True,
+            )
+        outputs.append(_extract_zip(output) if zipfile.is_zipfile(output) else output)
+    return outputs
 
 
 def from_thredds(
@@ -611,6 +748,7 @@ __all__ = [
     "ExistingDownloadWarning",
     "from_arcgis_rest",
     "from_figshare",
+    "from_google_drive",
     "from_html",
     "from_s3",
     "from_thredds",

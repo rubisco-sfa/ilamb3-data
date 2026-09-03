@@ -1,75 +1,91 @@
-import time
-from pathlib import Path
-
-import cftime as cf
-import numpy as np
 import xarray as xr
 
 import ilamb3_data as ild
 
-RAW_PATH = Path("_raw")
-if not RAW_PATH.is_dir():
-    RAW_PATH.mkdir()
-
-# define sources
-remote_sources = [
-    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2003.nc",
-    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2004.nc",
-    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2005.nc",
-    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2006.nc",
-    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2007.nc",
-    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2008.nc",
-    "https://thredds.nci.org.au/thredds/fileServer/ks32/ARCCSS_Data/CLASS/v1-1/CLASS_v1-1_2009.nc",
-]
-local_sources = [str(RAW_PATH / Path(s).name) for s in remote_sources]
-
-# ensure we have downloaded the data
-for remote_source, local_source in zip(remote_sources, local_sources):
-    if not Path(local_source).is_file():
-        ild.download.from_html(remote_source, local_source)
-download_stamp = ild.output.utc_timestamp(Path(local_sources[0]).stat().st_mtime)
-
-# open and rename some variables
-ds = xr.open_mfdataset(local_sources)
-ds = ds.rename({"hfds": "hfdsl", "hfds_sd": "hfdsl_sd", "rs": "rns", "rs_sd": "rns_sd"})
-
-# fix up coordinates
-ds["time"] = [cf.DatetimeGregorian(t.dt.year, t.dt.month, t.dt.day) for t in ds["time"]]
-ds = ild.time.standardize(
-    ds, bounds_frequency="M", ref_date=cf.DatetimeGregorian(2003, 1, 1)
+# Download
+url = (
+    "https://thredds.nci.org.au/thredds/catalog/ks32/ARCCSS_Data/CLASS/v1-1/catalog.xml"
 )
+input_netcdfs = ild.download.from_thredds(url, pattern="CLASS_v1-1_*.nc")
+download_stamp = ild.output.utc_timestamp(input_netcdfs[0].stat().st_mtime)
+
+# Open dataset and rename some variables to match CMIP5/6 naming conventions
+time_coder = xr.coders.CFDatetimeCoder(use_cftime=True)
+ds = xr.open_mfdataset(input_netcdfs, decode_times=time_coder)
+ds = ds.rename(
+    {v: str(v).replace("hfds", "hfdsl").replace("rs", "rns") for v in ds.data_vars}
+)
+
+
+# Standardize (CF) the time, lat, and lon coordinates, and add bounds dimension
+ds = ild.time.standardize(ds, bounds_frequency="MS")
 ds = ild.lat.standardize(ds)
 ds = ild.lon.standardize(ds)
-ds = ild.bounds.build_from_centers(ds, "lat")
-ds = ild.bounds.build_from_centers(ds, "lon")
+ds = ild.bounds.add_rectilinear_bounds(ds, overwrite=True)
 
-# write netcdf for each variable
-generate_stamp = time.strftime("%Y%m%d")
-tracking_id = ild.output.new_tracking_id()
-variables = [v for v in ds if ("_sd" not in v and "_bnds" not in v)]
-for var in variables:
+# Describe some attrs unique to each variable
+per_var_attrs = {
+    "dw": {
+        "uncert_basis": "GRACE-propagated",
+        "source_desc": "Monthly storage change derived from JPL GRACE RL06 mascon anomalies",
+    },
+    "pr": {
+        "uncert_basis": "Kriging-based",
+        "source_desc": "Monthly REGEN gauge-based precipitation with kriging uncertainty",
+    },
+    "rns": {
+        "uncert_basis": "Observation-constrained",
+        "source_desc": "Synthesis of five net-radiation products constrained by flux and radiation sites",
+    },
+    "hfdsl": {
+        "uncert_basis": "Flux-tower-constrained",
+        "source_desc": "Synthesis of five ground-heat products constrained by flux towers",
+    },
+    "hfss": {
+        "uncert_basis": "Flux-tower-constrained",
+        "source_desc": "Synthesis of six sensible-heat products constrained by flux towers",
+    },
+    "mrro": {
+        "uncert_basis": "Streamflow-constrained",
+        "source_desc": "LORA synthesis of 11 modeled runoff estimates constrained by streamflow",
+    },
+    "hfls": {
+        "uncert_basis": "Flux-tower-constrained",
+        "source_desc": "DOLCE synthesis of six evapotranspiration products constrained by flux towers",
+    },
+}
+
+# Use source metadata for variables absent from the CMIP6 lookup
+source_name_attr = {"dw": "long_name", "rns": "standard_name"}
+
+# Set compression levels for variables
+compression = {
+    "zlib": True,
+    "complevel": 4,
+    "shuffle": True,
+    "chunksizes": (1, 360, 720),
+}
+
+# Write a NetCDF for each variable and its uncertainty
+for var in (str(v) for v in ds.data_vars if not str(v).endswith(("_sd", "_bnds"))):
+    # Select variable and its uncertainty, and any bounds variables
     uncert = f"{var}_sd"
-    out = ds.drop_vars(
-        [d for d in ds if d not in [var, uncert] and not d.endswith("_bnds")]
-    )
+    out = ds[[var, uncert, *[v for v in ds if str(v).endswith("_bnds")]]]
 
-    # get standard/long name info and manage when it's not in cmip6 CV or is uncertainty
-    var_info = {
-        "cf_standard_name": out[var].attrs.get("standard_name", var),
-        "variable_long_name": out[var].attrs.get(
-            "long_name", var.replace("_", " ").title()
-        ),
-        "variable_units": out[var].attrs.get("units", ""),
-    }
-    if "_sd" not in var:
-        try:
-            var_info = ild.variable.lookup_cmip6(var, var)
-        except Exception:
-            var_info["variable_long_name"] = (
-                var_info["variable_long_name"].replace("_", " ").title()
-            )
+    # Clean up special cases that don't have a CMIP6 standard name or long name
+    if var in source_name_attr:
+        long_name = out[var].attrs[source_name_attr[var]].replace("_", " ").title()
+        var_info = {
+            "cf_standard_name": out[var].attrs.get("standard_name")
+            or long_name.replace(" ", "_").lower(),
+            "variable_long_name": long_name,
+        }
+    # Otherwise, look up the variable in the CMIP6 variable table
+    else:
+        var_info = ild.variable.lookup_cmip6(var, var)
+    var_info["variable_units"] = out[var].attrs.get("units", "")
 
-    # format the var attrs
+    # Format the variable attributes
     out = ild.variable.standardize(
         out,
         var,
@@ -77,57 +93,62 @@ for var in variables:
         standard_name=var_info["cf_standard_name"],
         long_name=var_info["variable_long_name"],
         ancillary_variables=uncert,
-        target_dtype=np.dtype("float32"),
-        convert=False,
+        target_dtype="float32",
+        convert=False,  # Ignores what is set as `units=` and retains original
+        compression=compression,
     )
+    out[var].attrs.pop("ALMA_short_name", None)  # Drop straggling attribute
 
-    # drop some straggling attrs
-    out[var].attrs.pop("ALMA_short_name", None)
+    # Format the ancillary var attrs
+    out = ild.variable.standardize(
+        out,
+        uncert,
+        units=out[uncert].attrs.get("units", ""),
+        standard_name=f"{out[var].attrs['standard_name']} standard_deviation",
+        long_name=f"{per_var_attrs[var]['uncert_basis']} standard deviation of {out[var].attrs['long_name'].lower()}",
+        target_dtype="float32",
+        convert=False,  # Ignores what is set as `units=` and retains original
+        compression=compression,
+    )
+    out[uncert].attrs.pop("cell_methods", None)  # Drop incorrect attribute
 
-    # format the ancillary var attrs
-    out[uncert].attrs = {
-        "standard_name": f"{var} standard_deviation",
-        "units": out[var].attrs["units"],
-    }
-    out[uncert].encoding["_FillValue"] = np.float32(1.0e20)
-
-    # set the global attrs
+    # Set the global attrs
     out = ild.global_attrs.set_ods26(
         out,
+        activity_id="ILAMB",
         aux_uncertainty_id="sd",
         contact="Sanaa Hobeichi (s.hobeichi@unsw.edu.au)",
-        creation_date=generate_stamp,
+        creation_date=ild.output.utc_timestamp(),
         dataset_contributor="Nathan Collier",
         doi="https://doi.org/10.25914/5c872258dc183",
         frequency="mon",
         grid="0.5x0.5 degree latitude x longitude",
         grid_label="gn",
         has_aux_unc="TRUE",
-        history=f"""
-{download_stamp}: downloaded using https://geonetwork.nci.org.au/geonetwork/srv/eng/catalog.search#/metadata/f4854_2536_6084_5147;
-{generate_stamp}: converted to obs4MIP format""",
+        history=f"""Downloaded from {url} on {download_stamp}. Converted to CF-compliant and ODS-aligned product by ILAMB on {ild.output.utc_timestamp()}.""",
         institution="University of New South Wales, Sydney, New South Wales, AUS",
         institution_id="UNSW",
-        license="https://creativecommons.org/licenses/by-nc-sa/4.0/",
+        license="Creative Commons Attribution-ShareAlike 4.0 International License (CC BY-SA 4.0)",
         nominal_resolution="0.5 degree",
         processing_code_location="https://github.com/rubisco-sfa/ilamb3-data/blob/main/data/CLASS-1-1/convert.py",
         product="derived",
         realm="land",
-        references="Hobeichi, Sanaa and Abramowitz, Gab and Evans, Jason, Conserving Land-Atmosphere Synthesis Suite (CLASS), Journal of Climate, 33(5), 2020, 10.1175/JCLI-D-19-0036.1.",
+        references="Hobeichi, S., Abramowitz, G., & Evans, J. (2020) Conserving Land-Atmosphere Synthesis Suite (CLASS), Journal of Climate, 33(5), 10.1175/JCLI-D-19-0036.1.",
         region="global_land",
-        source="Ground Heat Flux (GLDAS, MERRALND, MERRAFLX, NCEP_DOII, NCEP_NCAR), Sensible Heat Flux(GLDAS, MERRALND, MERRAFLX, NCEP_DOII, NCEP_NCAR, MPIBGC, Princeton), Latent Heat Flux(DOLCE1.0), Net Radiation (GLDAS, MERRALND, NCEP_DOII, NCEP_NCAR, ERAI, EBAF4.0), Precipitation(REGEN1.1), Runoff(LORA1.0), Change in Water storage(GRACE(GFZ, JPL, CSR))",
+        source=f"{per_var_attrs[var]['source_desc']}",
         source_id="CLASS-1-1",
         source_data_retrieval_date=download_stamp,
-        source_data_url=",".join(remote_sources),
+        source_data_url=url,
         source_label="CLASS",
-        source_type="gridded_insitu",
+        source_type="AI_upscaling",
         source_version_number="1.1",
         title=f"Conserving Land-Atmosphere Synthesis Suite ({var})",
-        tracking_id=tracking_id,
+        tracking_id=ild.output.new_tracking_id(),
         variable_id=var,
         variant_label="ILAMB",
-        variant_info="CMORized product prepared by ILAMB",
-        version=f"v{generate_stamp}",
+        variant_info="CF-compliant and ODS-aligned product prepared by ILAMB",
+        version=f"v{ild.output.utc_timestamp()[:10].replace('-', '')}",
     )
+    out = ild.output.order_dimensions(out)
     out_path = ild.output.filename_from_attrs(out.attrs)
     out.to_netcdf(out_path)

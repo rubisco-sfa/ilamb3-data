@@ -26,6 +26,7 @@ dependencies = [
     "pyarrow>=23.0.0",
     "earthaccess>=0.16.0",
     "geopandas>=1.1.4",
+    "gdown>=6.1.0",
 ]
 
 [build-system]

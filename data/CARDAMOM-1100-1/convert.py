@@ -343,7 +343,7 @@ def main(source: str = SOURCE_FILE):
             )
             # Create both percentile variables before declaring them ancillary.
             for percentile, statistic in zip((25, 75), source_statistics):
-                ancillary = f"{varname}_p{percentile}"
+                ancillary = f"{varname}lbnd" if percentile == 25 else f"{varname}ubnd"
                 out[ancillary] = finish(
                     combine_terms(ds, [(src_base, coefficient)], statistic)
                 )
@@ -358,7 +358,7 @@ def main(source: str = SOURCE_FILE):
             standard_name=spec["standard_name"],
             long_name=spec["long_name"],
             ancillary_variables=(
-                f"{varname}_p25 {varname}_p75" if has_percentiles else None
+                f"{varname}lbnd {varname}ubnd" if has_percentiles else None
             ),
             target_dtype="float32",
             convert=True,
@@ -373,9 +373,9 @@ def main(source: str = SOURCE_FILE):
         # Set ancillary attributes after the main variable attrs are set
         if has_percentiles:
             for percentile in (25, 75):
-                ancillary = f"{varname}_p{percentile}"
+                ancillary = f"{varname}lbnd" if percentile == 25 else f"{varname}ubnd"
                 standard_name = (
-                    f"{spec['standard_name']} {percentile}th_percentile"
+                    f"{spec['standard_name']} {'lower' if percentile == 25 else 'upper'}_bound"
                     if spec["standard_name"]
                     else ""
                 )
@@ -403,7 +403,11 @@ def main(source: str = SOURCE_FILE):
         )
         out = ild.lat.standardize(out)
         out = ild.lon.standardize(out)
-        out = ild.bounds.add_rectilinear_bounds(out)
+        # The source coordinates retain bounds attributes when selected into
+        # ``out``, but their referenced bounds variables are not carried along.
+        # Rebuild those regular-grid bounds instead of treating the stale
+        # references as existing bounds.
+        out = ild.bounds.add_rectilinear_bounds(out, overwrite=True)
         out = ild.output.order_dimensions(out)
 
         # --- set NetCDF global attributes ---------------------------------------------
@@ -411,7 +415,7 @@ def main(source: str = SOURCE_FILE):
         out = ild.global_attrs.set_ods26(
             out,
             activity_id="ILAMB",
-            aux_uncertainty_id=f"{varname}_p25 {varname}_p75",
+            aux_uncertainty_id="lbnd, ubnd" if has_percentiles else "N/A",
             comment=COMMENT.get(varname, COMMENT_BASE),
             contact="Renato Braghiere (renatob@caltech.edu)",
             creation_date=creation_stamp,
@@ -420,7 +424,7 @@ def main(source: str = SOURCE_FILE):
             frequency="mon",
             grid="4x5 degree latitude x longitude",
             grid_label="gn",
-            has_aux_unc="TRUE",
+            has_aux_unc="TRUE" if has_percentiles else "FALSE",
             history=(
                 f"{download_stamp}: downloaded {SOURCE_FILE} from earthdata (ORNL DAAC); "
                 "only extracted the median ensemble member (25th/75th percentiles retained as CF bounds where the "
@@ -452,6 +456,7 @@ def main(source: str = SOURCE_FILE):
             title=f"CARDAMOM Carbon-Water-Energy Reanalysis v1100.1, 2001-2021: {varname}",
             tracking_id=ild.output.new_tracking_id(),
             variable_id=varname,
+            variant_label="ILAMB",
             version=f"v{time.strftime('%Y%m%d')}",
         )
 

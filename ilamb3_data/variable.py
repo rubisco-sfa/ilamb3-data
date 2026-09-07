@@ -96,11 +96,13 @@ def _sanitize_units(u: str) -> str:
     Turn things like "gC/m^2/day" into "gC m-2 day-1",
     which cf_units will happily parse.
     """
-    # 1) squared denominators: /foo^2 → " foo-2"
+    # 1) cubed denominators: /foo^3 → " foo-3"
+    u = re.sub(r"/([A-Za-z]+)\^?3", r" \1-3", u)
+    # 2) squared denominators: /foo^2 → " foo-2"
     u = re.sub(r"/([A-Za-z]+)\^?2", r" \1-2", u)
-    # 2) any remaining single denominators: /foo → " foo-1"
+    # 3) any remaining single denominators: /foo → " foo-1"
     u = re.sub(r"/([A-Za-z]+)", r" \1-1", u)
-    # 3) strip any stray carets
+    # 4) strip any stray carets
     return u.replace("^", "")
 
 

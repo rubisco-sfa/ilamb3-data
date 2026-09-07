@@ -35,12 +35,9 @@ for path in input_netcdfs:
     ds = xr.open_dataset(netcdf, decode_times=time_coder)
     ds = ds.rename({"sm": var, "std": f"{var}_sd"})
 
-    # Convert volumetric soil moisture and its standard deviation to kg m-2
-    thickness = ds["depth_bnds"].diff(dim="bnds").squeeze("bnds", drop=True)
-    conversion = thickness * 998.0  # Multiply by water density
+    # Convert volumetric soil moisture
     for name in (var, f"{var}_sd"):
-        ds[name] = ds[name] * conversion
-        ds[name].attrs["units"] = "kg m-2"
+        ds[name].attrs["units"] = "m3 m-3"
 
     # Standardize (CF) the time, lat, and lon coordinates, and add bounds dimension
     ds = ild.time.standardize(ds, bounds_frequency="MS")
@@ -55,7 +52,8 @@ for path in input_netcdfs:
     )
     ds = ild.bounds.add_rectilinear_bounds(ds, overwrite=True)
 
-    # Look up the variable in the CMIP6 variable table
+    # Look up the variable in the CMIP6 variable table. The CMOR units of mrsol
+    # are `kg m-2`, but in this case we will keep the original volumetric units.
     var_info = ild.variable.lookup_cmip6(var, var)
 
     # Set compression levels for variables
@@ -70,7 +68,7 @@ for path in input_netcdfs:
     ds = ild.variable.standardize(
         ds,
         var,
-        units=var_info["variable_units"],
+        units="m3 m-3",
         standard_name=var_info["cf_standard_name"],
         long_name=var_info["variable_long_name"],
         ancillary_variables=f"{var}_sd",
@@ -83,7 +81,7 @@ for path in input_netcdfs:
     ds = ild.variable.standardize(
         ds,
         f"{var}_sd",
-        units=ds[f"{var}_sd"].attrs["units"],
+        units="m3 m-3",
         standard_name=f"{ds[var].attrs['standard_name']} standard_deviation",
         long_name=per_netcdf_attrs[method]["uncert_long_name"],
         target_dtype="float32",
